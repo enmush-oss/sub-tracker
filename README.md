@@ -12,12 +12,27 @@
 
 ## 실행
 
+Node 18 이상이 필요하다 (`node -v` 로 확인).
+
 ```bash
 npm install
+```
+
+```bash
 npm run dev
 ```
 
-http://localhost:5273
+`npm run dev` 는 개발 서버를 띄우고 **브라우저를 자동으로 연다** (http://localhost:5273).
+안 열리면 그 주소를 직접 열면 된다.
+
+받은 직후에는 **아무 데이터도 없는 빈 상태**다. 샘플 데이터도, 남의 결제 내역도 들어있지 않다.
+대시보드의 "명세서 올리고 시작하기" 버튼에서 카드 명세서 CSV 를 넣는 것으로 시작한다.
+
+정적 파일로 뽑아 쓰려면:
+
+```bash
+npm run build
+```
 
 ## 화면 6개
 
@@ -159,14 +174,12 @@ $220 구독 하나에서 2만원 넘게 틀어졌다.
 Google One 은 저장소지만 Gemini(AI)를 포함하므로, 저장소 중복과 AI 중복 **양쪽에** 잡혀야 한다.
 그래서 주 카테고리 외에 **부가 카테고리**를 여러 개 붙일 수 있다.
 
-## 샘플
+## 저장소에 데이터 파일이 없는 이유
 
-`samples/` 에 테스트용 가짜 명세서 2개가 있다.
-
-- `sample-card-statement.csv` — UTF-8
-- `sample-card-statement-euckr.csv` — EUC-KR (인코딩 폴백 확인용)
-
-정기결제 10건 + 이미 끊긴 구독 1건 + 연간결제 1건 + 노이즈 120건이 섞여 있다.
+명세서 픽스처를 커밋해두면 (1) 남의 소비 내역처럼 보이고 (2) 날짜가 박제돼 시간이 지나면
+전부 "결제 끊김"으로 잡혀 테스트가 무의미해진다.
+그래서 테스트용 명세서는 `src/lib/__tests__/helpers/statement.ts` 가 **실행 시점에 메모리에서**
+만든다 (오늘 기준 상대 날짜, EUC-KR 인코딩 포함).
 
 ## 구조
 
@@ -185,10 +198,8 @@ src/
     analyze.ts        중복·낭비 진단
     store.ts          localStorage 영속화
   components/         화면 6개
-docs/CONTRACT.md      모듈 간 API 계약
-docs/CONTRACT-EMAIL.md 이메일 수집 계약
-data/                 수집된 개인 데이터 (커밋 안 됨)
-samples/              테스트용 명세서
+docs/ARCHITECTURE.md  데이터 흐름과 모듈 경계
+data/                 내보낸 개인 데이터를 두는 곳 (커밋 안 됨)
 ```
 
 ## 테스트

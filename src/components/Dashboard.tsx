@@ -3,15 +3,13 @@ import type { AppState, Currency } from '../types'
 import { CATEGORY_LABEL } from '../types'
 import { computeTotals, formatMoney, daysUntil } from '../lib/money'
 import { analyze } from '../lib/analyze'
-import { sampleState } from '../lib/store'
 
 interface Props {
   state: AppState
-  updateState: (updater: (prev: AppState) => AppState) => void
   onGotoImport: () => void
 }
 
-export default function Dashboard({ state, updateState, onGotoImport }: Props) {
+export default function Dashboard({ state, onGotoImport }: Props) {
   const totals = useMemo(
     () => computeTotals(state.subscriptions, state.settings, undefined, { table: state.fxTable }),
     [state],
@@ -28,20 +26,20 @@ export default function Dashboard({ state, updateState, onGotoImport }: Props) {
     return (
       <div className="card empty-state">
         <div style={{ fontSize: 40 }}>🧾</div>
-        <h3>등록된 구독이 아직 없어요</h3>
-        <p>샘플 데이터로 화면을 둘러보거나, 카드 명세서를 올려서 자동으로 구독을 찾아보세요.</p>
+        <h3>아직 등록된 구독이 없어요</h3>
+        <p>
+          손으로 하나씩 넣어도 되지만, <strong>카드 명세서를 올리면 반복 결제를 자동으로 찾아</strong>
+          잊고 있던 구독까지 알려드려요.
+        </p>
         <div className="empty-state-actions">
-          <button
-            className="btn btn-primary"
-            type="button"
-            onClick={() => updateState(() => sampleState())}
-          >
-            샘플 데이터 넣기
-          </button>
-          <button className="btn" type="button" onClick={onGotoImport}>
-            명세서 올리기
+          <button className="btn btn-primary" type="button" onClick={onGotoImport}>
+            명세서 올리고 시작하기
           </button>
         </div>
+        <p className="field-hint" style={{ marginTop: 14 }}>
+          카드사 홈페이지·앱에서 이용대금명세서를 CSV 로 내려받아 올리면 됩니다.
+          파일은 브라우저 안에서만 읽고 어디로도 보내지 않습니다.
+        </p>
       </div>
     )
   }

@@ -185,7 +185,7 @@ export default function App() {
       <main className="app-main">
         <ErrorBoundary key={tab} onReset={handleHardReset}>
         {tab === 'dashboard' && (
-          <Dashboard state={state} updateState={updateState} onGotoImport={() => setTab('import')} />
+          <Dashboard state={state} onGotoImport={() => setTab('import')} />
         )}
         {tab === 'subscriptions' && (
           <SubscriptionList
