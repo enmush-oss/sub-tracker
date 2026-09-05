@@ -1,9 +1,11 @@
 import { useMemo, useRef, useState } from 'react'
 import type { AppState, ColumnMapping, DetectedSeries, ParsedCsv, Subscription } from '../types'
-import { CYCLE_LABEL } from '../types'
+import { CATEGORY_LABEL, CYCLE_LABEL } from '../types'
 import { readCsvFile, rowsToTxns } from '../lib/csv'
 import { detectSeries, matchSeriesToSubs, seriesToSubscriptionDraft } from '../lib/detect'
 import { cycleText, formatMoney } from '../lib/money'
+import { guessServiceName } from '../lib/normalize'
+import { getApiKey, readAll, type ReadResult } from '../lib/gemini'
 
 interface Props {
   state: AppState
@@ -31,6 +33,10 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [series, setSeries] = useState<DetectedSeries[]>([])
+  // AI 판독 결과. key = series.key
+  const [readings, setReadings] = useState<Record<string, ReadResult>>({})
+  const [reading, setReading] = useState(false)
+  const [readError, setReadError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   async function handleFile(file: File) {
@@ -80,9 +86,15 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
   const confident = [...forgottenList, ...knownList]
   const lowConfidence = series.filter((s) => s.confidence < CONFIDENT_MIN)
 
+  // 사전이 못 알아본 것들. AI 판독 대상이자, 판독 버튼을 보여줄 이유.
+  const unknownSeries = confident.filter(
+    (s) => !s.matchedSubscriptionId && !guessServiceName(s.key) && !readings[s.key],
+  )
+
   function renderSeriesCard(s: DetectedSeries) {
     const forgotten = isForgotten(s)
     const ignored = state.ignoredSeriesKeys.includes(s.key)
+    const reading_ = readings[s.key]
     return (
       <div className={`series-card${forgotten ? ' forgotten' : ''}${ignored ? ' ignored' : ''}`} key={s.key}>
         <div className="series-main">
@@ -111,6 +123,15 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
             {' · 다음 예상 '}
             {s.nextExpected}
           </div>
+          {reading_ && (
+            <div className={`series-reading${reading_.isSubscription ? '' : ' not-sub'}`}>
+              <span className="pill pill-ai">AI 판독</span>{' '}
+              {reading_.service ?? '알아보지 못함'}
+              {reading_.category && ` · ${CATEGORY_LABEL[reading_.category]}`}
+              {!reading_.isSubscription && ' · 구독이 아닌 것 같음'}
+              {reading_.note && <div className="series-reading-note">{reading_.note}</div>}
+            </div>
+          )}
         </div>
         {!s.matchedSubscriptionId && (
           <div className="series-actions">
@@ -131,6 +152,31 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
     )
   }
 
+  /**
+   * 사전에 없는 가맹점만 골라 AI 판독기로 보낸다.
+   * 이미 아는 건 보낼 이유가 없다 — 호출도 아끼고, 나가는 데이터도 줄인다.
+   */
+  async function handleRead() {
+    const apiKey = getApiKey()
+    if (!apiKey) {
+      setReadError('설정 탭에서 Gemini API 키를 먼저 넣어주세요.')
+      return
+    }
+    setReading(true)
+    setReadError(null)
+    const { results, error } = await readAll(
+      unknownSeries.map((s) => ({ key: s.key, merchantRaw: s.merchantRaw })),
+      { apiKey },
+    )
+    setReadings((prev) => {
+      const next = { ...prev }
+      for (const r of results) next[r.key] = r
+      return next
+    })
+    if (error) setReadError(error)
+    setReading(false)
+  }
+
   function handleIgnore(key: string) {
     updateState((prev) => ({
       ...prev,
@@ -141,7 +187,12 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
   }
 
   function handleRegister(s: DetectedSeries) {
-    onRegister(seriesToSubscriptionDraft(s), s.key)
+    const draft = seriesToSubscriptionDraft(s)
+    const r = readings[s.key]
+    // 사전이 못 알아본 건 원문 표기가 그대로 서비스명이 된다. 판독 결과가 있으면 그게 낫다.
+    if (r?.service && !guessServiceName(s.key)) draft.service = r.service
+    if (r?.category && !guessServiceName(s.key)) draft.category = r.category
+    onRegister(draft, s.key)
   }
 
   const previewRows = useMemo(() => parsed?.rows.slice(0, 5) ?? [], [parsed])
@@ -268,6 +319,22 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
             정기결제 {confident.length}건
             {forgottenList.length > 0 && ` · 잊고 있던 구독 ${forgottenList.length}건`}
           </h3>
+
+          {unknownSeries.length > 0 && (
+            <div className="ai-read-bar">
+              <div>
+                <strong>{unknownSeries.length}건</strong>이 무슨 서비스인지 사전에 없습니다.
+                AI 로 읽어볼 수 있어요.
+                <div className="ai-read-note">
+                  가맹점 이름만 Gemini 로 보냅니다. 금액·날짜·카드번호는 보내지 않습니다.
+                </div>
+              </div>
+              <button className="btn btn-sm" type="button" disabled={reading} onClick={handleRead}>
+                {reading ? '판독 중…' : 'AI 판독'}
+              </button>
+            </div>
+          )}
+          {readError && <p className="form-error">{readError}</p>}
           {series.length === 0 ? (
             <p className="chart-empty">반복되는 결제를 찾지 못했습니다.</p>
           ) : (

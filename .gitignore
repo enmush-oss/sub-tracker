@@ -8,3 +8,8 @@ public/samples/real-subs.json
 
 # 개인 데이터에 묶인 로컬 전용 테스트 (실제 구독 서비스명이 단언문에 들어있다)
 src/lib/__tests__/gmail-real.test.ts
+
+# 로컬 시크릿 (절대 커밋 금지)
+.dev.vars
+.env
+.env.local

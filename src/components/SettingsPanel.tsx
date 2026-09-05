@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import type { AppState, Currency } from '../types'
 import { emptyState, exportJson, importJson } from '../lib/store'
 import { collectRateNeeds, ensureRates } from '../lib/fx'
+import { GEMINI_MODEL, getApiKey, hasBuiltinKey, setApiKey } from '../lib/gemini'
 
 const CURRENCIES: Currency[] = ['KRW', 'USD', 'EUR', 'JPY', 'GBP']
 
@@ -11,6 +12,8 @@ interface Props {
 }
 
 export default function SettingsPanel({ state, updateState }: Props) {
+  const [geminiKey, setGeminiKey] = useState(() => getApiKey() ?? '')
+  const [geminiSaved, setGeminiSaved] = useState(false)
   const [importError, setImportError] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
   const [fxRefreshing, setFxRefreshing] = useState(false)
@@ -168,6 +171,46 @@ export default function SettingsPanel({ state, updateState }: Props) {
             />
           </div>
         </div>
+      </div>
+
+      <div className="card settings-section">
+        <h3 className="section-title" style={{ fontSize: 14 }}>
+          AI 판독기 (Gemini)
+        </h3>
+        <p className="field-hint">
+          명세서에서 찾은 가맹점 중 <strong>사전에 없는 이름</strong>을 대신 읽어줍니다.
+          <br />
+          나가는 건 가맹점 이름뿐입니다. 금액·날짜·카드번호·거래 건수는 보내지 않습니다.
+          <br />
+          <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer">
+            Google AI Studio
+          </a>
+          에서 무료 키를 받을 수 있습니다. 모델: <code>{GEMINI_MODEL}</code>
+        </p>
+        <div className="toolbar" style={{ marginBottom: 0 }}>
+          <input
+            type="password"
+            className="input"
+            placeholder={hasBuiltinKey() ? '.dev.vars 의 키를 쓰는 중' : 'Gemini API 키'}
+            value={geminiKey}
+            onChange={(e) => {
+              setGeminiKey(e.target.value)
+              setGeminiSaved(false)
+            }}
+            style={{ flex: 1, minWidth: 220 }}
+          />
+          <button
+            className="btn"
+            type="button"
+            onClick={() => {
+              setApiKey(geminiKey)
+              setGeminiSaved(true)
+            }}
+          >
+            저장
+          </button>
+        </div>
+        {geminiSaved && <p className="field-hint" style={{ marginTop: 8 }}>저장했습니다.</p>}
       </div>
 
       <div className="card settings-section">

@@ -28,7 +28,7 @@ export default function Dashboard({ state, onGotoImport }: Props) {
         <div style={{ fontSize: 40 }}>🧾</div>
         <h3>아직 등록된 구독이 없어요</h3>
         <p>
-          손으로 하나씩 넣어도 되지만, <strong>카드 명세서를 올리면 반복 결제를 자동으로 찾아</strong>
+          손으로 하나씩 넣어도 되지만, <strong>카드 명세서를 올리면 반복 결제를 자동으로 찾아</strong>{' '}
           잊고 있던 구독까지 알려드려요.
         </p>
         <div className="empty-state-actions">

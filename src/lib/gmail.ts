@@ -14,13 +14,30 @@ const GMAIL_API = 'https://gmail.googleapis.com/gmail/v1/users/me'
 const CONCURRENCY = 5
 const MAX_RETRIES = 3
 
-/** localStorage 에서 클라이언트 ID 를 읽는다. 설정 탭에서 사용자가 넣는다. */
+declare const __GOOGLE_CLIENT_ID__: string
+
+/** 빌드 시점에 `.dev.vars` 에서 들어온 기본 클라이언트 ID. 없으면 빈 문자열. */
+function builtinClientId(): string {
+  try {
+    return typeof __GOOGLE_CLIENT_ID__ === 'string' ? __GOOGLE_CLIENT_ID__ : ''
+  } catch {
+    return ''
+  }
+}
+
+/**
+ * 저장된 클라이언트 ID → 없으면 빌드 기본값.
+ * OAuth implicit flow 의 client_id 는 공개되는 게 정상이라 번들에 있어도 된다.
+ * (client_secret 은 다르다. 그건 번들에 절대 넣지 않는다 — vite.config.ts 화이트리스트 참고)
+ */
 export function getClientId(): string | null {
   try {
-    return localStorage.getItem(CLIENT_ID_KEY)
+    const saved = localStorage.getItem(CLIENT_ID_KEY)
+    if (saved) return saved
   } catch {
-    return null
+    /* 시크릿 모드 등 */
   }
+  return builtinClientId() || null
 }
 
 export function setClientId(id: string): void {
