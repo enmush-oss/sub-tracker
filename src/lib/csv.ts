@@ -4,6 +4,8 @@
 // ─────────────────────────────────────────────────────────────
 import type { ColumnMapping, Currency, ParsedCsv, Txn } from '../types'
 import { normalizeMerchant } from './normalize'
+import { isZip, parseXlsx, XlsxError } from './xlsx'
+import { looksLikeHtmlTable, parseHtmlTable } from './htmltable'
 
 const DELIMITER_CANDIDATES = [',', ';', '\t', '|']
 
@@ -72,10 +74,22 @@ export function parseCsvText(text: string): { headers: string[]; rows: Record<st
   if (lines.length === 0) return { headers: [], rows: [], delimiter: ',' }
 
   const delimiter = detectDelimiter(lines)
-  const parsedLines = lines.map((l) => parseLineFields(l, delimiter))
-  const counts = parsedLines.map((f) => f.length)
+  const { headers, rows } = gridToTable(lines.map((l) => parseLineFields(l, delimiter)))
+  return { headers, rows, delimiter }
+}
 
-  // 본문의 실제 컬럼 수(가장 흔한 컬럼 수, 2 이상)를 찾는다.
+/**
+ * 셀 격자에서 헤더 줄을 찾아 레코드 배열로 만든다.
+ *
+ * CSV·엑셀·HTML 표가 전부 이 함수를 지난다. 셋 다 같은 문제를 갖고 있어서다:
+ * 위쪽에 "OO카드 이용대금명세서", "조회기간: ..." 같은 안내 줄이 몇 개 붙어 있다.
+ * 컬럼 수가 가장 흔한 값을 본문으로 보고, 그 폭이 처음 나타나는 줄을 헤더로 잡는다.
+ */
+export function gridToTable(grid: string[][]): { headers: string[]; rows: Record<string, string>[] } {
+  const cells = grid.filter((r) => r.some((c) => c.trim() !== ''))
+  if (cells.length === 0) return { headers: [], rows: [] }
+
+  const counts = cells.map((f) => f.length)
   const freq = new Map<number, number>()
   for (const c of counts) freq.set(c, (freq.get(c) ?? 0) + 1)
   let targetCount = 0
@@ -86,25 +100,30 @@ export function parseCsvText(text: string): { headers: string[]; rows: Record<st
       targetCount = c
     }
   }
-  if (targetCount === 0) {
-    // 구분자를 못 찾은 단일 컬럼 CSV
-    targetCount = Math.max(...counts)
-  }
+  if (targetCount === 0) targetCount = Math.max(...counts)
 
   const headerIdx = counts.findIndex((c) => c === targetCount)
-  if (headerIdx === -1) return { headers: [], rows: [], delimiter }
+  if (headerIdx === -1) return { headers: [], rows: [] }
 
-  const headers = parsedLines[headerIdx]
+  // 엑셀은 빈 헤더 셀을 그대로 준다. 이름이 없으면 레코드 키가 겹쳐 열이 통째로 사라진다.
+  const seen = new Map<string, number>()
+  const headers = cells[headerIdx].map((h, i) => {
+    const base = h.trim() || `열${i + 1}`
+    const n = seen.get(base) ?? 0
+    seen.set(base, n + 1)
+    return n === 0 ? base : `${base} (${n + 1})`
+  })
+
   const rows: Record<string, string>[] = []
-  for (let i = headerIdx + 1; i < parsedLines.length; i++) {
-    if (parsedLines[i].length !== headers.length) continue
+  for (let i = headerIdx + 1; i < cells.length; i++) {
+    if (cells[i].length !== headers.length) continue
     const row: Record<string, string> = {}
     headers.forEach((h, idx) => {
-      row[h] = parsedLines[i][idx] ?? ''
+      row[h] = cells[i][idx] ?? ''
     })
     rows.push(row)
   }
-  return { headers, rows, delimiter }
+  return { headers, rows }
 }
 
 const FIELD_CANDIDATES: Record<'date' | 'merchant' | 'amount' | 'card', string[]> = {
@@ -238,31 +257,65 @@ export function rowsToTxns(
  *  한국 카드사 CSV 는 대부분 euc-kr 이므로 반드시 TextDecoder('euc-kr') 폴백을 넣을 것.
  *  판별법: utf-8 로 fatal 디코딩 시도 -> 실패하면 euc-kr 로 재시도.
  *  euc-kr 도 실패하면 utf-8 관대 모드. */
-export async function readCsvFile(file: File): Promise<ParsedCsv> {
-  const buf = await file.arrayBuffer()
-  const bytes = new Uint8Array(buf)
-
-  let text: string
-  let encoding: string
+/** 바이트를 문자열로. 국내 카드사 파일은 UTF-8 이 아닌 경우가 흔해 EUC-KR 로 넘어간다. */
+export function decodeBytes(bytes: Uint8Array): { text: string; encoding: string } {
   if (bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) {
-    text = new TextDecoder('utf-8').decode(bytes.slice(3))
-    encoding = 'utf-8'
-  } else {
+    return { text: new TextDecoder('utf-8').decode(bytes.slice(3)), encoding: 'utf-8' }
+  }
+  try {
+    return { text: new TextDecoder('utf-8', { fatal: true }).decode(bytes), encoding: 'utf-8' }
+  } catch {
     try {
-      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes)
-      encoding = 'utf-8'
+      return { text: new TextDecoder('euc-kr', { fatal: true }).decode(bytes), encoding: 'euc-kr' }
     } catch {
-      try {
-        text = new TextDecoder('euc-kr', { fatal: true }).decode(bytes)
-        encoding = 'euc-kr'
-      } catch {
-        text = new TextDecoder('utf-8').decode(bytes)
-        encoding = 'utf-8'
-      }
+      return { text: new TextDecoder('utf-8').decode(bytes), encoding: 'utf-8' }
     }
+  }
+}
+
+/** 구형 .xls(BIFF)는 OLE2 복합문서다. 이 시그니처면 우리가 못 읽는 형식이다. */
+function isOle2(b: Uint8Array): boolean {
+  return (
+    b.length > 8 &&
+    b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0 &&
+    b[4] === 0xa1 && b[5] === 0xb1 && b[6] === 0x1a && b[7] === 0xe1
+  )
+}
+
+/**
+ * 명세서 파일 하나를 읽는다. CSV·엑셀(.xlsx)·HTML 표(.xls) 를 내용으로 구분한다.
+ *
+ * 확장자를 믿지 않는 이유: 국내 카드사의 "엑셀 다운로드"가 주는 .xls 는
+ * 진짜 엑셀이 아니라 HTML 표인 경우가 아주 흔하다. 확장자로 갈래를 타면 그걸 놓친다.
+ */
+export async function readTableFile(file: File): Promise<ParsedCsv> {
+  const bytes = new Uint8Array(await file.arrayBuffer())
+
+  if (isZip(bytes)) {
+    const grid = await parseXlsx(bytes)
+    const { headers, rows } = gridToTable(grid.rows)
+    if (!headers.length) throw new XlsxError('엑셀 시트에서 표를 찾지 못했습니다.')
+    return { headers, rows, encoding: 'xlsx', delimiter: '', suggested: suggestMapping(headers), format: `엑셀 · ${grid.sheetName}` }
+  }
+
+  if (isOle2(bytes)) {
+    throw new XlsxError(
+      '구형 엑셀(.xls) 형식은 읽지 못합니다. 엑셀에서 열어 .xlsx 또는 CSV 로 다시 저장해 주세요.',
+    )
+  }
+
+  const { text, encoding } = decodeBytes(bytes)
+
+  if (looksLikeHtmlTable(text)) {
+    const grid = parseHtmlTable(text)
+    const { headers, rows } = gridToTable(grid.rows)
+    if (!headers.length) throw new XlsxError('표에서 헤더를 찾지 못했습니다.')
+    return { headers, rows, encoding, delimiter: '', suggested: suggestMapping(headers), format: 'HTML 표(.xls)' }
   }
 
   const { headers, rows, delimiter } = parseCsvText(text)
-  const suggested = suggestMapping(headers)
-  return { headers, rows, encoding, delimiter, suggested }
+  return { headers, rows, encoding, delimiter, suggested: suggestMapping(headers), format: 'CSV' }
 }
+
+/** @deprecated `readTableFile` 을 쓴다. 이름만 남겨둔 별칭. */
+export const readCsvFile = readTableFile

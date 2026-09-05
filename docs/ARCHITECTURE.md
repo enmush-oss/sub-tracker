@@ -5,7 +5,9 @@
 ## 데이터 흐름
 
 ```
-카드 명세서 CSV ──► csv.ts ──┐
+카드 명세서 ──► csv.ts ──────┐
+ (CSV/xlsx/HTML)  xlsx.ts    │
+                  htmltable.ts
                              ├──► Txn[] ──► detect.ts ──► DetectedSeries[] ──┐
 Gmail / JSON ──► gmail.ts ───┤                                               │
                  email.ts ───┘                                               │
@@ -27,7 +29,9 @@ Gmail / JSON ──► gmail.ts ───┤                                    
 |---|---|---|
 | `types.ts` | 공용 타입. 모든 모듈이 여기에 의존한다 | 로직 없음 (`categoriesOf` 만 예외) |
 | `normalize.ts` | 가맹점명 정규화, 알려진 서비스 사전 | 금액·날짜를 보지 않는다 |
-| `csv.ts` | 인코딩 판별, CSV 파싱, 컬럼 매핑 추측 | 정기결제 판단을 하지 않는다 |
+| `csv.ts` | 파일 형식·인코딩 판별, 컬럼 매핑 추측 | 정기결제 판단을 하지 않는다 |
+| `xlsx.ts` / `htmltable.ts` | 엑셀·HTML 표를 셀 격자로 | 헤더를 정하지 않는다 (`gridToTable` 담당) |
+| `gemini.ts` | 사전에 없는 가맹점 이름 판독 | 등록을 대신 하지 않는다 |
 | `detect.ts` | 거래 배열에서 반복 패턴을 찾는다 | 통화 환산을 하지 않는다 |
 | `email.ts` / `naverpay.ts` | 영수증 메일 → 시리즈 | 네트워크를 만지지 않는다 |
 | `gmail.ts` | OAuth + 메일 가져오기 | 파싱하지 않는다 |
@@ -37,6 +41,9 @@ Gmail / JSON ──► gmail.ts ───┤                                    
 | `store.ts` | localStorage 영속화, JSON 내보내기/가져오기 | 계산하지 않는다 |
 
 ## 왜 이렇게 되어 있나 (되돌리기 쉬운 결정들)
+
+**파일 형식은 확장자가 아니라 내용으로 본다.** 국내 카드사의 "엑셀 다운로드"가 주는 `.xls` 는
+진짜 엑셀이 아니라 `<table>` 이 든 HTML 인 경우가 아주 흔하다. 확장자로 갈래를 타면 그걸 놓친다.
 
 **EUC-KR 를 먼저 의심한다.** 국내 카드사 CSV 는 UTF-8 인 경우가 드물다.
 `csv.ts` 는 UTF-8 을 fatal 모드로 먼저 시도하고, 깨지면 EUC-KR 로 넘어간다.

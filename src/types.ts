@@ -117,6 +117,8 @@ export interface ParsedCsv {
   delimiter: string
   /** 헤더 이름으로 추측한 매핑 초안. 확신 없으면 필드가 비어있다. */
   suggested: Partial<ColumnMapping>
+  /** 사용자에게 보여줄 형식 표시. "엑셀 · Sheet1" / "CSV" / "HTML 표(.xls)" */
+  format?: string
 }
 
 /** 같은 가맹점의 반복 결제 묶음 = 정기결제 후보. */

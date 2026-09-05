@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from 'react'
 import type { AppState, ColumnMapping, DetectedSeries, ParsedCsv, Subscription } from '../types'
 import { CATEGORY_LABEL, CYCLE_LABEL } from '../types'
-import { readCsvFile, rowsToTxns } from '../lib/csv'
+import { readTableFile, rowsToTxns } from '../lib/csv'
 import { detectSeries, matchSeriesToSubs, seriesToSubscriptionDraft } from '../lib/detect'
 import { cycleText, formatMoney } from '../lib/money'
 import { guessServiceName } from '../lib/normalize'
@@ -43,13 +43,14 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
     setError(null)
     setLoading(true)
     try {
-      const result = await readCsvFile(file)
+      const result = await readTableFile(file)
       setFileName(file.name)
       setParsed(result)
       setMapping(result.suggested)
       setStep(2)
-    } catch {
-      setError('CSV 파일을 읽지 못했습니다. 형식을 확인해주세요.')
+    } catch (e) {
+      // "구형 엑셀은 .xlsx 로 저장하세요" 같은 안내가 여기서 나온다. 뭉개면 안 된다.
+      setError(e instanceof Error && e.message ? e.message : '파일을 읽지 못했습니다. 형식을 확인해주세요.')
     } finally {
       setLoading(false)
     }
@@ -201,7 +202,7 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
     <div>
       <h2 className="section-title">명세서로 잊은 구독 찾기</h2>
       <p className="section-sub">
-        카드 명세서 CSV 를 올리면 반복 결제를 자동으로 찾아서, 등록 안 된 정기결제를 알려드려요.
+        카드 명세서를 올리면 반복 결제를 자동으로 찾아서, 등록 안 된 정기결제를 알려드려요.
       </p>
 
       <div className="wizard-steps">
@@ -231,7 +232,7 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
             }}
           >
             <div style={{ fontSize: 32, marginBottom: 8 }}>📄</div>
-            {loading ? '읽는 중...' : 'CSV 파일을 여기로 끌어다 놓거나 클릭해서 선택하세요'}
+            {loading ? '읽는 중...' : 'CSV · 엑셀 파일을 여기로 끌어다 놓거나 클릭해서 선택하세요'}
             <div className="field-hint" style={{ marginTop: 6 }}>
               한국 카드사 명세서(euc-kr 인코딩)도 자동으로 인식합니다.
             </div>
@@ -240,7 +241,7 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
             ref={fileInputRef}
             className="hidden-file-input"
             type="file"
-            accept=".csv,text/csv"
+            accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
             onChange={(e) => {
               const file = e.target.files?.[0]
               if (file) void handleFile(file)
@@ -255,6 +256,11 @@ export default function ImportWizard({ state, updateState, onRegister }: Props) 
         <div className="card">
           <h3 className="section-title" style={{ fontSize: 14 }}>
             컬럼 매핑 확인 · {fileName}
+            {parsed?.format && (
+              <span className="pill" style={{ marginLeft: 8, fontWeight: 400 }}>
+                {parsed.format}
+              </span>
+            )}
           </h3>
           <div className="mapping-grid">
             {MAPPING_FIELDS.map((f) => (

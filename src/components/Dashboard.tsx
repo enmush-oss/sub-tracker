@@ -37,7 +37,7 @@ export default function Dashboard({ state, onGotoImport }: Props) {
           </button>
         </div>
         <p className="field-hint" style={{ marginTop: 14 }}>
-          카드사 홈페이지·앱에서 이용대금명세서를 CSV 로 내려받아 올리면 됩니다.
+          카드사 홈페이지·앱에서 이용대금명세서를 CSV 나 엑셀로 내려받아 올리면 됩니다.
           파일은 브라우저 안에서만 읽고 어디로도 보내지 않습니다.
         </p>
       </div>
