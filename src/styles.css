@@ -5,6 +5,8 @@
 
 :root {
   color-scheme: light;
+  /* 헤더와 본문이 같은 폭을 쓰도록 한 곳에서 정한다. */
+  --content-max: 1180px;
   --surface-1: #fcfcfb;
   --surface-2: #f9f9f7;
   --surface-3: #f2f1ee;
@@ -145,16 +147,26 @@ textarea {
   flex-direction: column;
 }
 
+/* 막대 자체는 화면 끝까지 가되(스티키 헤더는 그래야 자연스럽다),
+   안의 내용은 본문 칼럼과 같은 폭에 맞춘다. 안 맞추면 넓은 화면에서
+   제목과 구독료가 칼럼 바깥으로 튀어나간다. */
 .app-header {
   position: sticky;
   top: 0;
   z-index: 20;
+  padding: 12px 0;
+  background: var(--surface-1);
+  border-bottom: 1px solid var(--border);
+}
+.app-header-inner {
   display: flex;
   align-items: center;
   gap: 16px;
-  padding: 12px 20px;
-  background: var(--surface-1);
-  border-bottom: 1px solid var(--border);
+  width: 100%;
+  max-width: var(--content-max);
+  margin: 0 auto;
+  /* 좌우 여백까지 본문과 똑같이 줘야 제목이 카드 왼쪽 모서리에 맞는다. */
+  padding: 0 20px;
 }
 
 .app-title {
@@ -213,7 +225,7 @@ textarea {
 .app-main {
   flex: 1;
   width: 100%;
-  max-width: 1180px;
+  max-width: var(--content-max);
   margin: 0 auto;
   padding: 20px;
 }

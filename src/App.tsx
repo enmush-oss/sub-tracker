@@ -183,48 +183,50 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1 className="app-title">당신의 곳간에는 쥐새끼들이 살고 있다</h1>
-        <nav className="tabs">
-          {TABS.map((t) => (
-            <button
-              key={t.id}
-              className={`tab-btn${tab === t.id ? ' active' : ''}`}
-              onClick={() => setTab(t.id)}
-              type="button"
-            >
-              {t.label}
-            </button>
-          ))}
-        </nav>
-        {/* 구독료는 어느 화면에 있든 늘 보여야 하는 숫자다. 헤더에 둔다. */}
-        <div className="header-stats">
-          <div className="header-stat">
-            <span className="header-stat-label">이번 달</span>
-            <span className="header-stat-value kpi-accent">{formatMoney(totals.monthly, base)}</span>
-          </div>
-          <div className="header-stat">
-            <span className="header-stat-label">연 환산</span>
-            <span className="header-stat-value">{formatMoney(totals.yearly, base)}</span>
-          </div>
-          <div className="header-stat">
-            <span className="header-stat-label">구독</span>
-            <span className="header-stat-value">{totals.activeCount}개</span>
-          </div>
-          {totalSaving > 0 && (
+        <div className="app-header-inner">
+          <h1 className="app-title">당신의 곳간에는 쥐새끼들이 살고 있다</h1>
+          <nav className="tabs">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                className={`tab-btn${tab === t.id ? ' active' : ''}`}
+                onClick={() => setTab(t.id)}
+                type="button"
+              >
+                {t.label}
+              </button>
+            ))}
+          </nav>
+          {/* 구독료는 어느 화면에 있든 늘 보여야 하는 숫자다. 헤더에 둔다. */}
+          <div className="header-stats">
             <div className="header-stat">
-              <span className="header-stat-label">절약 가능</span>
-              <span className="header-stat-value kpi-save">{formatMoney(totalSaving, base)}</span>
+              <span className="header-stat-label">이번 달</span>
+              <span className="header-stat-value kpi-accent">{formatMoney(totals.monthly, base)}</span>
             </div>
-          )}
+            <div className="header-stat">
+              <span className="header-stat-label">연 환산</span>
+              <span className="header-stat-value">{formatMoney(totals.yearly, base)}</span>
+            </div>
+            <div className="header-stat">
+              <span className="header-stat-label">구독</span>
+              <span className="header-stat-value">{totals.activeCount}개</span>
+            </div>
+            {totalSaving > 0 && (
+              <div className="header-stat">
+                <span className="header-stat-label">절약 가능</span>
+                <span className="header-stat-value kpi-save">{formatMoney(totalSaving, base)}</span>
+              </div>
+            )}
+          </div>
+          <button
+            className="icon-btn"
+            type="button"
+            title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
+            onClick={() => setTheme((p) => (p === 'dark' ? 'light' : 'dark'))}
+          >
+            {theme === 'dark' ? '☀️' : '🌙'}
+          </button>
         </div>
-        <button
-          className="icon-btn"
-          type="button"
-          title={theme === 'dark' ? '라이트 모드로 전환' : '다크 모드로 전환'}
-          onClick={() => setTheme((p) => (p === 'dark' ? 'light' : 'dark'))}
-        >
-          {theme === 'dark' ? '☀️' : '🌙'}
-        </button>
       </header>
 
       <main className="app-main">
