@@ -183,7 +183,7 @@ export default function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1 className="app-title">구독 트래커</h1>
+        <h1 className="app-title">당신의 곳간에는 쥐새끼들이 살고 있다</h1>
         <nav className="tabs">
           {TABS.map((t) => (
             <button
