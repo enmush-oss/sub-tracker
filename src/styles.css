@@ -1104,3 +1104,10 @@ textarea {
   background: var(--accent-soft, rgba(96, 165, 250, 0.15));
   color: var(--accent, #60a5fa);
 }
+
+/* 점검 항목의 확인 버튼 (구독 여부를 사용자가 정해야 하는 건) */
+.finding-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}

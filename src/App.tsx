@@ -115,6 +115,19 @@ export default function App() {
     setFormModal({ mode: 'add', draft, fromSeriesKey: seriesKey })
   }
 
+  /**
+   * "구독 아님"으로 정리한 후보를 기억한다.
+   * 이걸 저장하지 않으면 메일을 다시 스캔할 때마다 같은 항목이 되살아난다.
+   */
+  function dismissCandidate(key: string) {
+    updateState((prev) => ({
+      ...prev,
+      dismissedCandidates: prev.dismissedCandidates.includes(key)
+        ? prev.dismissedCandidates
+        : [...prev.dismissedCandidates, key],
+    }))
+  }
+
   function closeForm() {
     setFormModal(null)
   }
@@ -202,7 +215,13 @@ export default function App() {
         {tab === 'email' && (
           <EmailImport state={state} updateState={updateState} onRegister={openDraftForm} />
         )}
-        {tab === 'findings' && <Findings state={state} />}
+        {tab === 'findings' && (
+          <Findings
+            state={state}
+            onConfirmCandidate={openDraftForm}
+            onDismissCandidate={dismissCandidate}
+          />
+        )}
         {tab === 'settings' && <SettingsPanel state={state} updateState={updateState} />}
         </ErrorBoundary>
       </main>

@@ -65,6 +65,7 @@ function emptyAppState(over: Partial<AppState> = {}): AppState {
     subscriptions: [],
     series: [],
     ignoredSeriesKeys: [],
+    dismissedCandidates: [],
   fxTable: {},
   receipts: [],
     settings,
@@ -345,5 +346,86 @@ describe('겹침 진단을 두 번 말하지 않는다', () => {
     // 두 진단의 절약액을 합치면 같은 겹침을 중복 계산해 헤드라인이 부푼다
     const total = overlaps.reduce((n, f) => n + f.monthlySaving, 0)
     expect(total).toBeLessThan(30000)
+  })
+})
+
+describe('증거 없는 구독 후보 (unconfirmed_service)', () => {
+  const receipt = (service: string, receivedAt: string) => ({
+    id: `r:${service}:${receivedAt}`,
+    source: 'json' as const,
+    receivedAt,
+    from: 'info@example.com',
+    subject: '약관 변경 안내',
+    kind: 'unknown' as const,
+    service,
+    category: 'ott' as const,
+    confidence: 0.5,
+    snippet: '',
+  })
+
+  const withReceipts = (over: Partial<AppState> = {}) =>
+    emptyAppState({
+      receipts: [receipt('Netflix', '2026-09-05'), receipt('Netflix', '2026-06-01')],
+      ...over,
+    })
+
+  const candidates = (state: AppState) =>
+    analyze(state, '2026-09-07').filter((f) => f.kind === 'unconfirmed_service')
+
+  it('계정 메일만 있고 결제 영수증이 없으면 확인 후보로 올린다', () => {
+    // 통신사 결합으로 내면 영수증이 안 온다. 앱이 구독 여부를 판단할 수 없으니 물어본다.
+    const c = candidates(withReceipts())
+    expect(c).toHaveLength(1)
+    expect(c[0].candidate?.service).toBe('Netflix')
+    expect(c[0].candidate?.key).toBeTruthy()
+    // 금액을 지어내면 안 된다 — 그 숫자가 그대로 월 합계에 들어간다
+    expect(c[0].monthlySaving).toBe(0)
+    expect(c[0].candidate?.amount).toBeUndefined()
+  })
+
+  it('같은 서비스 메일이 여러 건이어도 후보는 하나다', () => {
+    expect(candidates(withReceipts())).toHaveLength(1)
+    expect(candidates(withReceipts())[0].detail).toContain('2건')
+  })
+
+  it('이미 등록된 구독은 후보로 올리지 않는다', () => {
+    const state = withReceipts({
+      subscriptions: [makeSub({ id: 'n', service: 'Netflix', category: 'ott', amount: 17000 })],
+    })
+    expect(candidates(state)).toHaveLength(0)
+  })
+
+  it('결제 시리즈가 잡힌 서비스는 후보로 올리지 않는다', () => {
+    // 이미 증거가 있다. 여기 낄 자리가 아니다.
+    const state = withReceipts({
+      series: [makeSeries({ key: 'netflix', merchantRaw: 'Netflix' })],
+    })
+    expect(candidates(state)).toHaveLength(0)
+  })
+
+  it('"아니에요"로 정리하면 다시 스캔해도 올라오지 않는다', () => {
+    // 이게 없으면 메일을 스캔할 때마다 지운 항목이 되살아나 점검 화면이 쓸모없어진다.
+    const key = candidates(withReceipts())[0].candidate!.key
+    const state = withReceipts({ dismissedCandidates: [key] })
+    expect(candidates(state)).toHaveLength(0)
+  })
+
+  it('"구독 중이에요"로 등록하면 다음 스캔에서 중복으로 뜨지 않는다', () => {
+    // 등록 시 merchantPatterns 에 같은 키가 들어가므로 이후엔 등록된 것으로 인식된다.
+    const key = candidates(withReceipts())[0].candidate!.key
+    const state = withReceipts({
+      subscriptions: [
+        makeSub({ id: 'n', service: 'Netflix', category: 'ott', amount: 17000, merchantPatterns: [key] }),
+      ],
+    })
+    expect(candidates(state)).toHaveLength(0)
+  })
+
+  it('서비스명이 다르게 적혀도 같은 구독이면 중복으로 올리지 않는다', () => {
+    // 메일마다 표기가 다르다. 정규화 키로 비교해야 중복이 안 생긴다.
+    const state = emptyAppState({
+      receipts: [receipt('Netflix', '2026-09-05'), receipt('NETFLIX', '2026-08-05')],
+    })
+    expect(candidates(state)).toHaveLength(1)
   })
 })

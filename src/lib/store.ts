@@ -31,6 +31,7 @@ export function emptyState(): AppState {
     subscriptions: [],
     series: [],
     ignoredSeriesKeys: [],
+    dismissedCandidates: [],
     fxTable: {},
     receipts: [],
     settings: { ...DEFAULT_SETTINGS, fxRates: { ...DEFAULT_SETTINGS.fxRates } },
@@ -92,6 +93,8 @@ function normalizeLoadedState(parsed: unknown): AppState {
     subscriptions: obj.subscriptions as Subscription[],
     series: obj.series,
     ignoredSeriesKeys: Array.isArray(obj.ignoredSeriesKeys) ? obj.ignoredSeriesKeys : [],
+    // 이 필드가 생기기 전에 저장된 상태에는 없다. 없으면 빈 목록으로 시작한다.
+    dismissedCandidates: Array.isArray(obj.dismissedCandidates) ? obj.dismissedCandidates : [],
     // 이전 버전 저장분에는 receipts 가 없으므로 빈 배열로 마이그레이션한다.
     receipts: Array.isArray(obj.receipts) ? (obj.receipts as EmailReceipt[]) : [],
     // 결제 시점 환율 캐시. 과거 환율은 바뀌지 않으니 그대로 살려 재사용한다.

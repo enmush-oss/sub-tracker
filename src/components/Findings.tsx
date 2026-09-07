@@ -1,7 +1,29 @@
 import { useMemo } from 'react'
-import type { AppState, Finding } from '../types'
+import type { AppState, Finding, Subscription } from '../types'
 import { analyze } from '../lib/analyze'
 import { formatMoney } from '../lib/money'
+
+/**
+ * 확인 대기 후보 → 구독 폼 초안.
+ * 금액과 주기는 비워 둔다. 증거가 없어서 후보로 뜬 건데 앱이 지어내면
+ * 그 숫자가 그대로 합계에 들어간다. 사용자가 직접 채우게 한다.
+ */
+function candidateToDraft(f: Finding): Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'> {
+  const c = f.candidate!
+  return {
+    service: c.service,
+    plan: '',
+    category: c.category ?? 'other',
+    amount: c.amount ?? 0,
+    currency: c.currency ?? 'KRW',
+    cycle: c.cycle ?? 'monthly',
+    nextBillingDate: c.nextBillingDate ?? '',
+    startedAt: '',
+    status: 'active',
+    merchantPatterns: [c.key],
+    tags: [],
+  }
+}
 
 const SEVERITY_META = {
   high: { label: '심각도 높음', color: 'var(--status-critical)' },
@@ -11,9 +33,13 @@ const SEVERITY_META = {
 
 interface Props {
   state: AppState
+  /** "구독이에요" — 폼을 열어 사용자가 금액·주기를 채우게 한다 */
+  onConfirmCandidate: (draft: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>, key: string) => void
+  /** "아니에요" — 다음 스캔에서 다시 뜨지 않게 기억한다 */
+  onDismissCandidate: (key: string) => void
 }
 
-export default function Findings({ state }: Props) {
+export default function Findings({ state, onConfirmCandidate, onDismissCandidate }: Props) {
   const findings = useMemo(() => analyze(state), [state])
   const base = state.settings.baseCurrency
 
@@ -62,6 +88,24 @@ export default function Findings({ state }: Props) {
               <div className="finding-detail">{f.detail}</div>
               {f.monthlySaving > 0 && (
                 <div className="finding-saving">월 {formatMoney(f.monthlySaving, base)} 절약 가능</div>
+              )}
+              {f.candidate && (
+                <div className="finding-actions">
+                  <button
+                    className="btn btn-sm btn-primary"
+                    type="button"
+                    onClick={() => onConfirmCandidate(candidateToDraft(f), f.candidate!.key)}
+                  >
+                    구독 중이에요
+                  </button>
+                  <button
+                    className="btn btn-sm btn-ghost"
+                    type="button"
+                    onClick={() => onDismissCandidate(f.candidate!.key)}
+                  >
+                    아니에요
+                  </button>
+                </div>
               )}
             </div>
           ))}

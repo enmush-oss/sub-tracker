@@ -5,6 +5,7 @@
 import type { AppState, Category, Finding, FindingKind, Settings, Subscription } from '../types'
 import { CATEGORY_LABEL, CYCLE_LABEL, CHANNELS_WITHOUT_RECEIPTS, categoriesOf } from '../types'
 import { cycleText, cycleToMonths, formatMoney, monthlyBase, toBase } from './money'
+import { normalizeMerchant } from './normalize'
 
 /** 기능이 겹치는 서비스 묶음. 카테고리가 달라도 잡아내기 위한 것.
  *  예: YouTube Premium 은 category 가 video 지만 음악 그룹에도 들어간다. */
@@ -116,6 +117,7 @@ function matchesService(service: string, pattern: string): boolean {
 /** 아래 Finding 을 전부 생성. monthlySaving 은 기준통화 월 환산. */
 export function analyze(state: AppState, today?: string): Finding[] {
   const { subscriptions, series, ignoredSeriesKeys, settings } = state
+  const dismissed = new Set(state.dismissedCandidates ?? [])
   const t = today ?? isoToday()
   const findings: Finding[] = []
   // 겹침 항목은 보수적 절약액이 아니라 '정리 상한'으로 줄세운다.
@@ -251,6 +253,57 @@ export function analyze(state: AppState, today?: string): Finding[] {
       seriesKeys: [s.key],
       monthlySaving: 0,
     })
+  }
+
+  // ── unconfirmed_service ──────────────────────────────────
+  //
+  // 계정 메일은 오는데 결제 영수증이 없는 서비스. Netflix 처럼 통신사 결합으로
+  // 내면 정상적으로 이렇게 된다 — 진짜 쓰고 있는데 증거만 없는 것이다.
+  // 반대로 예전에 해지했는데 마케팅 메일만 남은 것일 수도 있다.
+  // 앱은 둘을 구분할 수 없다. 그래서 지우지도 등록하지도 않고 사용자에게 물어본다.
+  {
+    const registered = new Set<string>()
+    for (const sub of subscriptions) {
+      registered.add(normalizeMerchant(sub.service))
+      for (const p of sub.merchantPatterns) registered.add(normalizeMerchant(p))
+    }
+    // 반복 결제가 잡힌 서비스는 이미 증거가 있다. 여기 낄 자리가 아니다.
+    const proven = new Set(series.map((s) => s.key))
+
+    const candidates = new Map<string, { service: string; category?: Category; last: string; n: number }>()
+    for (const r of state.receipts ?? []) {
+      if (!r.service) continue
+      const key = normalizeMerchant(r.service)
+      // 이미 등록됐거나, 결제 증거가 있거나, 사용자가 아니라고 정리한 건 뺀다.
+      // 이 세 줄이 "다음 스캔에서 또 뜨는" 문제를 막는다.
+      if (registered.has(key) || proven.has(key) || dismissed.has(key)) continue
+      if (ignoredSeriesKeys.includes(key)) continue
+
+      const prev = candidates.get(key)
+      candidates.set(key, {
+        service: r.service,
+        category: r.category ?? prev?.category,
+        last: !prev || r.receivedAt > prev.last ? r.receivedAt : prev.last,
+        n: (prev?.n ?? 0) + 1,
+      })
+    }
+
+    for (const [key, c] of candidates) {
+      findings.push({
+        id: makeId('unconfirmed_service', [key]),
+        kind: 'unconfirmed_service',
+        severity: 'low',
+        title: `${c.service} 를 구독 중인가요?`,
+        detail:
+          `${c.service} 계정 메일은 ${c.n}건 왔는데(마지막 ${c.last}) 결제 영수증이 없습니다. ` +
+          '통신사 결합이나 기프트카드로 내면 영수증이 안 오기도 하고, 예전에 해지했는데 안내 메일만 남은 것일 수도 있어요. ' +
+          '구독 중이면 추가하고, 아니면 목록에서 지우세요.',
+        subscriptionIds: [],
+        seriesKeys: [],
+        monthlySaving: 0,
+        candidate: { key, service: c.service, category: c.category },
+      })
+    }
   }
 
   // ── trial_ending ─────────────────────────────────────────

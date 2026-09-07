@@ -152,6 +152,10 @@ export type FindingKind =
   | 'trial_ending'       // 무료체험 종료 임박
   | 'annual_saving'      // 연간 결제로 바꾸면 절약
   | 'duplicate_plan'     // 같은 서비스 요금제 중복 등록
+  // 구독처럼 보이는데 결제 증거가 없음. 계정 관련 메일(약관 변경·비밀번호 등)만
+  // 오고 영수증이 없는 경우다. 통신사 결합·기프트카드로 내면 정상적으로 이렇게 된다.
+  // 앱이 판단할 수 없으니 사용자에게 물어본다.
+  | 'unconfirmed_service'
 
 export interface Finding {
   id: string
@@ -163,6 +167,20 @@ export interface Finding {
   seriesKeys: string[]
   /** 이 건을 정리하면 아낄 수 있는 월 환산 금액 (기준통화) */
   monthlySaving: number
+  /**
+   * 사용자가 직접 확인해야 하는 건. 채워져 있으면 점검 화면에 확인 버튼이 붙는다.
+   * `unconfirmed_service` 가 이걸 쓴다.
+   */
+  candidate?: {
+    /** normalizeMerchant 로 만든 키. 확인/무시 상태를 이 키로 기억한다. */
+    key: string
+    service: string
+    category?: Category
+    amount?: number
+    currency?: Currency
+    cycle?: Cycle
+    nextBillingDate?: string
+  }
 }
 
 export interface Settings {
@@ -215,6 +233,13 @@ export interface AppState {
   subscriptions: Subscription[]
   series: DetectedSeries[]
   ignoredSeriesKeys: string[]
+  /**
+   * "구독 아님"이라고 사용자가 직접 정리한 후보들(normalizeMerchant 키).
+   *
+   * 메일을 다시 스캔하면 같은 계정 메일이 또 걸린다. 이 목록이 없으면
+   * 사용자가 지운 항목이 스캔할 때마다 되살아나 점검 화면이 쓸모없어진다.
+   */
+  dismissedCandidates: string[]
   /**
    * 결제 시점 환율 표. 키는 "USD-2026-07-13" 형태.
    * 과거 날짜의 환율은 바뀌지 않으므로 한 번 받으면 영구 캐시다.
