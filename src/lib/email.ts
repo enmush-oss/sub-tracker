@@ -73,6 +73,7 @@ export const RECEIPT_SENDERS: { domain: string; service: string; category: Categ
   { domain: 'zoom.us', service: 'Zoom', category: 'communication' },
   // 멤버십
   { domain: 'coupang.com', service: '쿠팡 와우', category: 'membership' },
+  { domain: 'naverplus_noreply@navercorp.com', service: '네이버플러스 멤버십', category: 'membership' },
   { domain: 'navercorp.com', service: '네이버', category: 'membership' },
   { domain: 'naver.com', service: '네이버', category: 'membership' },
   { domain: 'amazon.com', service: 'Amazon Prime', category: 'membership' },
@@ -222,8 +223,8 @@ function iso(y: number, m: number, d: number): string | null {
 function scanDates(text: string): string[] {
   const out: string[] = []
 
-  // 2026-10-14 / 2026.10.14 / 2026/10/14
-  for (const m of text.matchAll(/(20\d{2})[-./](\d{1,2})[-./](\d{1,2})/g)) {
+  // 2026-10-14 / 2026.10.14 / 2026/10/14 / "2026. 10. 12." (국내 영수증에 흔한 표기)
+  for (const m of text.matchAll(/(20\d{2})\s?[-./]\s?(\d{1,2})\s?[-./]\s?(\d{1,2})/g)) {
     const v = iso(+m[1], +m[2], +m[3])
     if (v) out.push(v)
   }
@@ -296,7 +297,7 @@ export function classifyReceipt(subject: string, body: string): ReceiptKind {
 
   // 제목으로 못 정하면 본문으로 한 번 더.
   if (/(해지되었|취소되었|has been canceled|has been cancelled)/.test(both)) return 'cancel'
-  if (/(결제가 완료|영수증|receipt for|invoice for|payment of)/.test(both)) return 'payment'
+  if (/(결제가 완료|결제\s*완료|영수증|receipt for|invoice for|payment of|결제금액)/.test(both)) return 'payment'
   if (/(갱신되었|has been renewed|was renewed)/.test(both)) return 'payment'
   if (/(갱신됩니다|자동으로 결제|will automatically renew|next billing date|다음 결제일)/.test(both))
     return 'renewal_notice'
@@ -315,9 +316,15 @@ function domainOf(from: string): string {
 /** 도메인이 서브도메인이어도 매칭되게 뒤에서부터 비교한다.
  *  info@account.netflix.com → netflix.com */
 function senderEntry(from: string) {
+  const addr = (from || '').toLowerCase()
+  // 같은 도메인에서 여러 서비스가 나가는 경우가 있다(navercorp.com 은 네이버 계정 메일도,
+  // 네이버플러스 멤버십도 쓴다). 주소 전체가 적힌 항목을 먼저 본다.
+  const exact = RECEIPT_SENDERS.find((e) => e.domain.includes('@') && addr.includes(e.domain))
+  if (exact) return exact
+
   const dom = domainOf(from)
   if (!dom) return undefined
-  return RECEIPT_SENDERS.find((e) => dom === e.domain || dom.endsWith('.' + e.domain))
+  return RECEIPT_SENDERS.find((e) => !e.domain.includes('@') && (dom === e.domain || dom.endsWith('.' + e.domain)))
 }
 
 function isIntermediary(from: string): boolean {
@@ -353,6 +360,38 @@ function toIsoDate(raw: string): string {
   return scanned[0] ?? new Date().toISOString().slice(0, 10)
 }
 
+/**
+ * 전달된(FW:) 메일에서 원래 발신자를 되찾는다.
+ *
+ * 메일함을 다른 계정으로 포워딩해두면 `from` 이 전부 본인 주소가 된다.
+ * 그러면 발신 도메인으로 서비스를 알아내는 경로가 통째로 망가진다 —
+ * 네이버플러스 멤버십 영수증이 그냥 "네이버"가 되는 식이다.
+ * 본문 맨 앞의 원본 헤더(`-----Original Message-----` / `From:`)를 먼저 본다.
+ */
+export function originalSender(from: string, body: string): string {
+  // 앞부분만 본다. 본문 한참 뒤의 인용문에서 엉뚱한 주소를 집으면 안 된다.
+  const head = (body || '').slice(0, 1200)
+  if (!/-{3,}\s*(original message|forwarded message)|^\s*From:/im.test(head)) return from
+  const m = /^\s*From:\s*(.*)$/im.exec(head)
+  const addr = m && /<([^>]+@[^>]+)>|([\w.+-]+@[\w.-]+)/.exec(m[1])
+  const found = addr?.[1] ?? addr?.[2]
+  return found ? m![1].trim() : from
+}
+
+/**
+ * 전달된 메일의 원본 발송일. `Sent:` / `보낸 날짜:` 헤더에서 읽는다.
+ *
+ * 이게 없으면 작년 결제를 "오늘 결제"로 읽는다. 1년치를 몰아서 전달하면
+ * 전부 같은 날짜가 되어 주기 계산이 통째로 무너진다.
+ */
+export function originalDate(body: string): string | undefined {
+  const head = (body || '').slice(0, 1200)
+  if (!/-{3,}\s*(original message|forwarded message)|^\s*From:/im.test(head)) return undefined
+  const m = /^\s*(?:Sent|Date|보낸\s*날짜|보낸날짜):\s*(.*)$/im.exec(head)
+  if (!m) return undefined
+  return scanDates(m[1])[0]
+}
+
 export function parseReceiptEmail(input: {
   id: string
   from: string
@@ -363,20 +402,23 @@ export function parseReceiptEmail(input: {
 }): EmailReceipt | null {
   const subject = input.subject ?? ''
   const body = input.body ?? ''
+  // 포워딩된 메일은 발신자와 날짜가 전달 시점 값으로 바뀐다. 원본을 먼저 되찾는다.
+  const from = originalSender(input.from ?? '', body)
+  const forwardedAt = originalDate(body)
 
   // 네이버페이는 결제대행이라 일반 경로로 파싱하면 "네이버 멤버십"이 돼버린다.
   // 실제 서비스명·금액은 본문 표 안에 있으므로 전용 파서로 넘긴다.
-  if (isNaverPaySender(input.from)) {
+  if (isNaverPaySender(from)) {
     const np = parseNaverPay(subject, body)
     if (!np) return null // 오프라인 결제·주문취소 등 구독과 무관한 건
-    const receivedAt = np.paidAt ?? toIsoDate(input.date)
+    const receivedAt = np.paidAt ?? forwardedAt ?? toIsoDate(input.date)
     const norm = normalizeMerchant(np.service)
     const service = guessServiceName(norm) ?? np.service
     return {
       id: input.id,
       source: input.source,
       receivedAt,
-      from: input.from,
+      from,
       subject,
       kind: np.kind,
       service,
@@ -393,14 +435,15 @@ export function parseReceiptEmail(input: {
   if (!looksSubscriptionRelated(subject, body)) return null
 
   const kind = classifyReceipt(subject, body)
-  const receivedAt = toIsoDate(input.date)
+  // 전달된 메일이면 원본 발송일이 진짜 결제일에 가깝다.
+  const receivedAt = forwardedAt ?? toIsoDate(input.date)
 
   // 서비스 판별: 발신 도메인 → 제목/본문 사전 → 도메인 이름 그대로
   let service: string | undefined
   let category: Category | undefined
 
-  const entry = senderEntry(input.from)
-  if (entry && !isIntermediary(input.from)) {
+  const entry = senderEntry(from)
+  if (entry && !isIntermediary(from)) {
     service = entry.service
     category = entry.category
   }
@@ -418,7 +461,7 @@ export function parseReceiptEmail(input: {
   }
 
   if (!service) {
-    const dom = domainOf(input.from)
+    const dom = domainOf(from)
     if (!dom) return null
     // noreply@somesaas.io → "somesaas"
     const label = dom.split('.').filter((p) => !['com', 'net', 'org', 'co', 'kr', 'io', 'so', 'ai', 'mail', 'email', 'account', 'no-reply', 'noreply'].includes(p))
@@ -444,7 +487,7 @@ export function parseReceiptEmail(input: {
     id: input.id,
     source: input.source,
     receivedAt,
-    from: input.from,
+    from,
     subject,
     kind,
     service,

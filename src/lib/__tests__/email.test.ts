@@ -411,3 +411,69 @@ describe('대표 영수증은 증거가 강한 쪽을 고른다', () => {
     expect(n.inferredCycleDays).toBeGreaterThan(700)
   })
 })
+
+describe('전달된(FW) 메일', () => {
+  // 메일함을 다른 계정으로 포워딩해두면 발신자와 날짜가 전달 시점 값으로 바뀐다.
+  // 원본을 되찾지 못하면 영수증이 통째로 엉뚱하게 읽힌다.
+  const body = `-----Original Message-----
+From: "네이버플러스 멤버십"<naverplus_noreply@navercorp.com>
+To: <me@naver.com>;
+Sent: 2025-09-12 (금) 12:31:51 (GMT+09:00)
+Subject: [네이버플러스 멤버십] 결제 내역 안내
+
+네이버플러스 멤버십
+결제 완료
+
+상품명 네이버플러스 연간 이용권
+결제일 2025. 09. 12.
+결제금액 49,000원 (VAT 포함)
+이용기간 2025. 09. 12.~2026. 09. 12.
+다음 결제 예정일 2026. 09. 12.`
+
+  const parsed = parseReceiptEmail({
+    id: 'fw1',
+    from: 'me@naver.com',
+    subject: 'FW: [네이버플러스 멤버십] 결제 내역 안내',
+    date: '2026-09-07',
+    body,
+    source: 'gmail',
+  })!
+
+  it('본문 헤더에서 원래 발신자를 되찾는다', () => {
+    // 전달 주소(me@naver.com)로 판단하면 그냥 "네이버"가 된다
+    expect(parsed.service).toBe('네이버플러스 멤버십')
+    expect(parsed.service).not.toBe('네이버')
+  })
+
+  it('전달한 날이 아니라 원본 발송일을 결제일로 쓴다', () => {
+    // 이게 틀리면 작년 결제가 오늘 것이 된다. 1년치를 몰아 전달하면
+    // 전부 같은 날짜가 되어 주기 계산이 통째로 무너진다.
+    expect(parsed.receivedAt).toBe('2025-09-12')
+    expect(parsed.receivedAt).not.toBe('2026-09-07')
+  })
+
+  it('금액·주기·종류를 읽는다', () => {
+    expect(parsed.amount).toBe(49000)
+    expect(parsed.cycle).toBe('yearly')
+    expect(parsed.kind).toBe('payment')
+    expect(parsed.category).toBe('membership')
+  })
+
+  it('"2025. 09. 12." 처럼 점 뒤에 공백이 있는 날짜를 읽는다', () => {
+    // 국내 영수증에 아주 흔한 표기다. 못 읽으면 다음 결제일이 통째로 빈다.
+    expect(parsed.nextBillingDate).toBe('2026-09-12')
+  })
+
+  it('전달 메일이 아니면 원래 발신자를 그대로 쓴다', () => {
+    const r = parseReceiptEmail({
+      id: 'n1',
+      from: 'info@account.netflix.com',
+      subject: '결제가 완료되었습니다',
+      date: '2026-08-14',
+      body: '17,000원이 결제되었습니다.',
+      source: 'gmail',
+    })!
+    expect(r.service).toBe('Netflix')
+    expect(r.receivedAt).toBe('2026-08-14')
+  })
+})
