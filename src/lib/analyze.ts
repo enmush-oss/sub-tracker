@@ -317,17 +317,34 @@ export function analyze(state: AppState, today?: string): Finding[] {
   }
 
   // 같은 구독 묶음을 카테고리 중복과 기능 겹침이 둘 다 잡으면 사용자는 같은 얘기를
-  // 두 번 듣는다. 기능 겹침 쪽이 카테고리 중복의 부분집합이면 지운다
-  // (카테고리 중복이 더 직접적인 설명이다).
-  const categorySets = findings
-    .filter((f) => f.kind === 'category_overlap')
-    .map((f) => new Set(f.subscriptionIds))
-  const deduped = findings.filter((f) => {
-    if (f.kind !== 'feature_overlap') return true
-    return !categorySets.some(
-      (set) => f.subscriptionIds.length > 0 && f.subscriptionIds.every((id) => set.has(id)),
-    )
-  })
+  // 같은 겹침을 두 번 말하지 않는다.
+  //
+  // 한쪽 구독 집합이 다른 쪽에 통째로 들어가면 둘은 같은 사실을 다르게 말하는 것이다.
+  // 예전에는 "기능 겹침 ⊆ 카테고리 중복" 한 방향만 봤는데, 반대 방향이 실제로 나왔다:
+  // 카테고리 중복(ChatGPT·Claude)이 기능 겹침(ChatGPT·Claude·Google One)에 포함돼
+  // "AI 서비스 2개"와 "AI 챗봇 기능 겹침"이 나란히 떴다.
+  //
+  // 더 나쁜 건 헤드라인이다. 둘의 절약액을 합산하니 같은 겹침을 두 번 세어
+  // "아낄 수 있는 금액"이 부풀었다. 그래서 겹치면 하나만 남기고,
+  // 남길 쪽은 실제로 더 아낄 수 있는 안내를 고른다.
+  const nested = (a: Finding, b: Finding) =>
+    a.subscriptionIds.length > 0 && a.subscriptionIds.every((id) => b.subscriptionIds.includes(id))
+
+  const overlaps = findings.filter(
+    (f) => f.kind === 'feature_overlap' || f.kind === 'category_overlap',
+  )
+  const dropped = new Set<string>()
+  for (const a of overlaps) {
+    if (dropped.has(a.id)) continue
+    for (const b of overlaps) {
+      if (a.id === b.id || dropped.has(b.id)) continue
+      if (!nested(a, b) && !nested(b, a)) continue
+      const loser = a.monthlySaving >= b.monthlySaving ? b : a
+      dropped.add(loser.id)
+      if (loser.id === a.id) break
+    }
+  }
+  const deduped = findings.filter((f) => !dropped.has(f.id))
   findings.length = 0
   findings.push(...deduped)
 

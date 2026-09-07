@@ -286,6 +286,10 @@ export function classifyReceipt(subject: string, body: string): ReceiptKind {
   if (inSubject(/(가격\s*(인상|변경)|요금\s*(인상|변경)|price (change|increase)|pricing update)/)) return 'price_change'
   if (inSubject(/(결제\s*(완료|성공)|영수증|receipt|invoice|payment (received|confirmation)|payment successful)/))
     return 'payment'
+  // 과거형 갱신은 이미 돈이 나갔다는 뜻이다. 구글은 청구 메일 제목을
+  // "구독이 갱신되었습니다"로 보낸다. 이걸 '갱신 예정'과 같이 취급하면
+  // 구글 구독은 결제 이력이 0건이 되어 정기결제로 잡히지 않는다.
+  if (inSubject(/(갱신되었|갱신 완료|has been renewed|was renewed|renewed successfully)/)) return 'payment'
   if (inSubject(/(갱신\s*예정|자동\s*결제\s*예정|정기\s*결제\s*안내|will renew|upcoming (payment|charge)|renews on)/))
     return 'renewal_notice'
   if (inSubject(/(구독\s*(시작|신청|가입)|welcome to|subscription (started|confirmed)|가입을?\s*환영)/)) return 'signup'
@@ -293,6 +297,7 @@ export function classifyReceipt(subject: string, body: string): ReceiptKind {
   // 제목으로 못 정하면 본문으로 한 번 더.
   if (/(해지되었|취소되었|has been canceled|has been cancelled)/.test(both)) return 'cancel'
   if (/(결제가 완료|영수증|receipt for|invoice for|payment of)/.test(both)) return 'payment'
+  if (/(갱신되었|has been renewed|was renewed)/.test(both)) return 'payment'
   if (/(갱신됩니다|자동으로 결제|will automatically renew|next billing date|다음 결제일)/.test(both))
     return 'renewal_notice'
   if (/(무료 체험|free trial)/.test(both)) return 'trial_ending'
@@ -479,6 +484,8 @@ const CYCLE_DAYS: Record<Cycle, number> = {
   quarterly: 91,
   semiannual: 182,
   yearly: 365,
+  // custom 은 "표준 주기가 아님"이라는 뜻이지 30일이라는 뜻이 아니다.
+  // 실제 일수는 다음 결제일에서 계산해야 한다. 아래 쓰이는 곳 참고.
   custom: 30,
 }
 
@@ -519,11 +526,26 @@ function median(nums: number[]): number | undefined {
 export function receiptsToSeries(receipts: EmailReceipt[], today?: string): DetectedSeries[] {
   const t = today ?? new Date().toISOString().slice(0, 10)
 
-  const canceled = new Set(
-    receipts.filter((r) => r.kind === 'cancel' && r.service).map((r) => normalizeMerchant(r.service!)),
-  )
+  // 해지 메일이 있어도 그 뒤에 또 결제가 나갔으면 살아있는 구독이다.
+  // Google One 처럼 연간 → 월간으로 갈아타면 해지 메일이 한 번 오고 그 다음 달부터
+  // 다시 빠져나간다. 날짜를 안 보고 서비스 이름만으로 지우면, 멀쩡히 돈이 나가는
+  // 구독이 목록에서 통째로 사라진다. 실제로 8번 결제된 Google One 이 그렇게 사라졌다.
+  const lastCancel = new Map<string, string>()
+  for (const r of receipts) {
+    if (r.kind !== 'cancel' || !r.service) continue
+    const k = normalizeMerchant(r.service)
+    const prev = lastCancel.get(k)
+    if (!prev || r.receivedAt > prev) lastCancel.set(k, r.receivedAt)
+  }
 
-  const live = receipts.filter((r) => r.service && !canceled.has(normalizeMerchant(r.service)))
+  const live = receipts.filter((r) => {
+    if (!r.service || r.kind === 'cancel') return false
+    const cancelAt = lastCancel.get(normalizeMerchant(r.service))
+    if (!cancelAt) return true
+    // 해지 이후 기록만 살린다. 해지 전 것까지 끌고 오면 이미 끝난 옛 요금제가
+    // 지금 구독인 것처럼 잡힌다.
+    return r.receivedAt > cancelAt
+  })
 
   // 서비스별로 묶는다. 금액은 영수증마다 빠져 있는 경우가 흔해서(게임 정기권, 가입 안내 등)
   // 같은 서비스에서 알아낸 금액을 서로 빌려 쓴다.
@@ -581,16 +603,33 @@ export function receiptsToSeries(receipts: EmailReceipt[], today?: string): Dete
 
     // ② 결제 영수증이 1건뿐이거나 갱신 안내만 온 서비스도 놓치면 안 된다.
     //    주기는 본문 표기 → 다음 결제일까지의 간격 순으로 알아낸다.
-    const rep = [...group].reverse().find((r) => r.cycle || r.nextBillingDate) ?? group[group.length - 1]
+    // 대표 영수증 고르기. 그냥 최신 것을 쓰면 안 된다 —
+    // "가입 완료" 안내 메일의 주기 표기는 어림값이라, 정확한 갱신일이 박힌 결제
+    // 영수증보다 뒤에 둬야 한다. 실제로 NordVPN 2년 약정(823일)이 가입 메일의
+    // '연간' 표기에 밀려 365일로 뭉개졌고, 월 비용이 2배 넘게 부풀었다.
+    const newest = [...group].reverse()
+    const rep =
+      newest.find((r) => r.nextBillingDate && r.amount) ??
+      newest.find((r) => r.nextBillingDate) ??
+      newest.find((r) => r.cycle) ??
+      group[group.length - 1]
     let cycle: Cycle | undefined = rep.cycle
-    let cycleDays: number | undefined = cycle ? CYCLE_DAYS[cycle] : undefined
+    let cycleDays: number | undefined =
+      cycle && cycle !== 'custom' ? CYCLE_DAYS[cycle] : undefined
 
-    if (!cycle && rep.nextBillingDate) {
-      // 2년 약정처럼 본문에 주기 단어가 없고 갱신일만 적힌 경우가 여기서 구제된다.
-      const inferred = inferCycleFromGap(daysBetween(rep.receivedAt, rep.nextBillingDate))
+    // 주기를 모르거나 'custom' 이면 다음 결제일까지의 간격으로 계산한다.
+    // 'custom' 에 기본값 30일을 쓰면 2년 약정(822일)이 월간으로 잡혀
+    // 109,890원짜리 결제가 매달 나가는 것처럼 계산된다. 27배 과대계상이다.
+    if ((!cycle || !cycleDays) && rep.nextBillingDate) {
+      const gap = daysBetween(rep.receivedAt, rep.nextBillingDate)
+      const inferred = inferCycleFromGap(gap)
       if (inferred) {
         cycle = inferred.cycle
         cycleDays = inferred.cycleDays
+      } else if (gap > 0) {
+        // 표준 주기 어디에도 안 맞으면 간격 자체가 주기다.
+        cycle = 'custom'
+        cycleDays = gap
       }
     }
     if (!cycle || !cycleDays) continue

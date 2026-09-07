@@ -284,3 +284,130 @@ describe('parseReceiptsJson', () => {
     expect(r.cycle).toBeUndefined()
   })
 })
+
+describe('해지 메일이 살아있는 구독을 지우지 않는다', () => {
+  const r = (
+    receivedAt: string,
+    kind: 'payment' | 'cancel',
+    amount?: number,
+  ) => ({
+    id: `${kind}:${receivedAt}`,
+    source: 'json' as const,
+    receivedAt,
+    from: 'googleplay-noreply@google.com',
+    subject: kind === 'cancel' ? '구독이 취소되었습니다' : '구독이 갱신되었습니다',
+    kind,
+    service: 'Google One',
+    category: 'cloud' as const,
+    ...(amount ? { amount, currency: 'KRW' as const } : {}),
+    cycle: 'monthly' as const,
+    confidence: 0.95,
+    snippet: '',
+  })
+
+  it('연간 → 월간으로 갈아타면 해지 메일이 와도 구독은 살아있다', () => {
+    // 실제로 겪은 일이다. 연간 플랜을 해지하고 같은 날 월간으로 갈아탔는데,
+    // 해지 메일 하나 때문에 그 뒤 6개월치 결제가 통째로 사라졌다.
+    const series = receiptsToSeries(
+      [
+        r('2025-10-03', 'payment', 24000),
+        r('2026-02-19', 'cancel'),
+        r('2026-03-19', 'payment', 29000),
+        r('2026-04-19', 'payment', 29000),
+        r('2026-05-19', 'payment', 29000),
+        r('2026-06-19', 'payment', 29000),
+        r('2026-07-19', 'payment', 7500),
+        r('2026-08-19', 'payment', 7500),
+      ],
+      '2026-09-07',
+    )
+    const g = series.find((s) => s.merchantRaw === 'Google One')
+    expect(g, '해지 메일 때문에 살아있는 구독이 사라짐').toBeDefined()
+    expect(g!.inferredCycle).toBe('monthly')
+    // 대표 금액은 중앙값(29,000)이 아니라 지금 나가는 돈이어야 한다
+    expect(g!.medianAmount).toBe(7500)
+    // 해지 이전 기록은 끌고 오지 않는다 — 끝난 요금제다
+    expect(g!.firstSeen > '2026-02-19').toBe(true)
+  })
+
+  it('해지 후 결제가 없으면 시리즈에서 뺀다', () => {
+    const series = receiptsToSeries(
+      [r('2025-10-03', 'payment', 24000), r('2025-11-03', 'payment', 24000), r('2025-12-01', 'cancel')],
+      '2026-09-07',
+    )
+    expect(series.find((s) => s.merchantRaw === 'Google One')).toBeUndefined()
+  })
+})
+
+describe('비표준 주기를 30일로 뭉개지 않는다', () => {
+  it('2년 약정은 다음 결제일에서 실제 일수를 계산한다', () => {
+    // custom 을 30일로 두면 109,890원짜리 2년 약정이 매달 나가는 것처럼 잡힌다. 27배다.
+    const series = receiptsToSeries(
+      [
+        {
+          id: 'nord',
+          source: 'json',
+          receivedAt: '2025-11-24',
+          from: 'support@nordaccount.com',
+          subject: 'Your payment confirmation and receipt',
+          kind: 'payment',
+          service: 'NordVPN',
+          category: 'security',
+          amount: 99000,
+          currency: 'KRW',
+          cycle: 'custom',
+          nextBillingDate: '2028-02-24',
+          confidence: 0.95,
+          snippet: '',
+        },
+      ],
+      '2026-09-07',
+    )
+    const n = series.find((s) => s.merchantRaw === 'NordVPN')
+    expect(n).toBeDefined()
+    // 823일이다. '연간'(365)으로 뭉개도 >360 은 통과해버리므로 실제 일수로 못박는다.
+    expect(n!.inferredCycleDays).toBeGreaterThan(700)
+    expect(n!.inferredCycle).toBe('custom')
+  })
+})
+
+describe('대표 영수증은 증거가 강한 쪽을 고른다', () => {
+  it('가입 안내의 어림 주기가 결제 영수증의 정확한 갱신일을 덮어쓰지 않는다', () => {
+    const base = {
+      source: 'json' as const,
+      from: 'support@nordaccount.com',
+      category: 'security' as const,
+      confidence: 0.9,
+      snippet: '',
+    }
+    const series = receiptsToSeries(
+      [
+        // 가입 안내가 결제 영수증보다 뒤(또는 같은 날)에 와도 밀리면 안 된다
+        {
+          ...base,
+          id: 'pay',
+          receivedAt: '2025-11-24',
+          subject: 'Your payment confirmation and receipt',
+          kind: 'payment',
+          service: 'NordVPN',
+          amount: 99000,
+          currency: 'KRW',
+          cycle: 'custom',
+          nextBillingDate: '2028-02-24',
+        },
+        {
+          ...base,
+          id: 'signup',
+          receivedAt: '2025-11-24',
+          subject: '자동결제 등록내역',
+          kind: 'signup',
+          service: 'NordVPN',
+          cycle: 'yearly',
+        },
+      ],
+      '2026-09-07',
+    )
+    const n = series.find((s) => s.merchantRaw === 'NordVPN')!
+    expect(n.inferredCycleDays).toBeGreaterThan(700)
+  })
+})

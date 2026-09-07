@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { analyze, FEATURE_OVERLAP_GROUPS } from '../analyze'
-import type { AppState, DetectedSeries, Settings, Subscription, Txn } from '../../types'
+import type { AppState, Category, DetectedSeries, Settings, Subscription, Txn } from '../../types'
 
 const settings: Settings = {
   baseCurrency: 'KRW',
@@ -288,5 +288,62 @@ describe('analyze - severity 정렬', () => {
       ],
     }))
     expect(full.some((f) => f.kind === 'feature_overlap')).toBe(true)
+  })
+})
+
+describe('겹침 진단을 두 번 말하지 않는다', () => {
+  const sub = (
+    id: string,
+    service: string,
+    amount: number,
+    category: Category,
+    extra?: Category[],
+  ): Subscription => ({
+    id,
+    service,
+    plan: '',
+    category,
+    ...(extra ? { extraCategories: extra } : {}),
+    amount,
+    currency: 'KRW',
+    cycle: 'monthly',
+    nextBillingDate: '2026-10-01',
+    startedAt: '2026-01-01',
+    status: 'active',
+    merchantPatterns: [],
+    tags: [],
+    createdAt: '2026-01-01',
+    updatedAt: '2026-01-01',
+  })
+
+  const state = emptyAppState({
+    subscriptions: [
+      sub('a', 'ChatGPT', 30000, 'ai'),
+      sub('b', 'Claude', 25000, 'ai'),
+      // Google One 은 저장소지만 Gemini 를 포함해 AI 겹침에도 걸린다
+      sub('c', 'Google One', 7500, 'cloud', ['ai']),
+    ],
+  })
+
+  const overlaps = analyze(state, '2026-09-07').filter(
+    (f) => f.kind === 'feature_overlap' || f.kind === 'category_overlap',
+  )
+
+  it('구독 집합이 포개지는 겹침 진단은 하나만 남는다', () => {
+    // 예전에는 "AI 서비스 2개"(ChatGPT·Claude)와
+    // "AI 챗봇 기능 겹침"(ChatGPT·Claude·Google One)이 나란히 떴다.
+    expect(overlaps.length).toBe(1)
+  })
+
+  it('남은 진단이 세 구독을 모두 다룬다', () => {
+    // Google One 은 주 카테고리가 저장소지만 Gemini 를 포함하므로 AI 겹침에도 들어간다.
+    // 하나로 합치면서 이 사실이 빠지면 안 된다.
+    expect(new Set(overlaps[0].subscriptionIds)).toEqual(new Set(['a', 'b', 'c']))
+  })
+
+  it('절약 가능액을 두 번 세지 않는다', () => {
+    // 두 진단의 절약액을 합치면 같은 겹침을 중복 계산해 헤드라인이 부푼다
+    const total = overlaps.reduce((n, f) => n + f.monthlySaving, 0)
+    expect(total).toBeLessThan(30000)
   })
 })
