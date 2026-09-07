@@ -40,8 +40,9 @@ Gmail / JSON ──► gmail.ts ───┤                                    
 | `analyze.ts` | 중복·낭비 진단 | 상태를 바꾸지 않는다 |
 | `store.ts` | localStorage 영속화, JSON 내보내기/가져오기 | 계산하지 않는다 |
 
-화면은 네 개다 — 대시보드(점검 포함) / 구독 / 자료입력(명세서+이메일) / 설정.
-`analyze` 결과는 `FindingList` 가 그리고, 대시보드가 그걸 품는다.
+화면은 세 개다 — 대시보드 / 자료입력(명세서+이메일) / 설정. 데스크탑 전용.
+대시보드가 KPI·점검(`FindingList`)·구독 목록(`SubscriptionList`, `embedded`)을 모두 품는다.
+`SubscriptionList` 의 `embedded` 는 제목·추가 버튼을 바깥에 양보한다는 뜻이다.
 
 ## 왜 이렇게 되어 있나 (되돌리기 쉬운 결정들)
 

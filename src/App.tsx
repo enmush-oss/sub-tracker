@@ -4,19 +4,19 @@ import { emptyState, loadState, saveState, uid } from './lib/store'
 import { collectRateNeeds, ensureRates } from './lib/fx'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import Dashboard from './components/Dashboard'
-import SubscriptionList from './components/SubscriptionList'
 import DataImport from './components/DataImport'
 import SettingsPanel from './components/SettingsPanel'
 import SubscriptionForm from './components/SubscriptionForm'
 
-type Tab = 'dashboard' | 'subscriptions' | 'import' | 'settings'
+type Tab = 'dashboard' | 'import' | 'settings'
 
-// 탭은 네 개면 충분하다. 명세서와 이메일은 "근거를 어디서 가져올까"라는
-// 같은 질문의 두 답이라 자료입력 안에서 고르게 하고, 점검은 대시보드에 넣었다.
-// 진단만 따로 있는 탭은 사람들이 거기까지 안 간다.
+// 탭은 세 개다. 보는 화면(대시보드) / 넣는 화면(자료입력) / 설정.
+//
+// 구독 목록·점검을 대시보드에 함께 둔 이유는 셋이 한 질문의 세 부분이라서다 —
+// 얼마 나가는가, 뭘 구독 중인가, 뭐가 문제인가. 탭으로 갈라놓으면 매번
+// 왔다갔다 해야 답이 맞춰진다. 진단만 따로 있는 탭은 아예 안 들어간다.
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: '대시보드' },
-  { id: 'subscriptions', label: '구독' },
   { id: 'import', label: '자료입력' },
   { id: 'settings', label: '설정' },
 ]
@@ -202,15 +202,9 @@ export default function App() {
             onGotoImport={() => setTab('import')}
             onConfirmCandidate={openDraftForm}
             onDismissCandidate={dismissCandidate}
-          />
-        )}
-        {tab === 'subscriptions' && (
-          <SubscriptionList
-            state={state}
             onAdd={openAddForm}
             onEdit={openEditForm}
             onDelete={deleteSubscription}
-            onGotoImport={() => setTab('import')}
           />
         )}
         {tab === 'import' && (

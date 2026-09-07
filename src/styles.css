@@ -326,7 +326,29 @@ textarea {
 }
 
 .grid-dash {
-  grid-template-columns: 1.3fr 1fr;
+  /* 구독 목록이 주(主), 다가오는 결제·카테고리가 보조. 시선이 왼쪽에서 시작한다. */
+  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+  align-items: start;
+}
+
+/* 보조 열의 카드들은 세로로 쌓인다 */
+.dash-side {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.dash-main > .card {
+  margin: 0;
+}
+
+/* 카드 제목 줄에 버튼을 같이 놓는다 */
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 14px;
 }
 
 @media (max-width: 900px) {

@@ -11,9 +11,18 @@ interface Props {
   onEdit: (sub: Subscription) => void
   onDelete: (id: string) => void
   onGotoImport: () => void
+  /** 대시보드 카드 안에 들어갈 때. 제목·추가 버튼은 바깥이 이미 그린다. */
+  embedded?: boolean
 }
 
-export default function SubscriptionList({ state, onAdd, onEdit, onDelete, onGotoImport }: Props) {
+export default function SubscriptionList({
+  state,
+  onAdd,
+  onEdit,
+  onDelete,
+  onGotoImport,
+  embedded,
+}: Props) {
   const [search, setSearch] = useState('')
   const [categoryFilter, setCategoryFilter] = useState<Category | 'all'>('all')
   const [statusFilter, setStatusFilter] = useState<SubStatus | 'all'>('all')
@@ -100,10 +109,14 @@ export default function SubscriptionList({ state, onAdd, onEdit, onDelete, onGot
           <option value="nextBillingDate">다음 결제일순</option>
           <option value="name">이름순</option>
         </select>
-        <span className="spacer" />
-        <button className="btn btn-primary" type="button" onClick={onAdd}>
-          + 구독 추가
-        </button>
+        {!embedded && (
+          <>
+            <span className="spacer" />
+            <button className="btn btn-primary" type="button" onClick={onAdd}>
+              + 구독 추가
+            </button>
+          </>
+        )}
       </div>
 
       {filtered.length === 0 ? (

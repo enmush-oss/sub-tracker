@@ -4,12 +4,16 @@ import { CATEGORY_LABEL } from '../types'
 import { computeTotals, formatMoney, daysUntil } from '../lib/money'
 import { analyze } from '../lib/analyze'
 import FindingList from './FindingList'
+import SubscriptionList from './SubscriptionList'
 
 interface Props {
   state: AppState
   onGotoImport: () => void
   onConfirmCandidate: (draft: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>, key: string) => void
   onDismissCandidate: (key: string) => void
+  onAdd: () => void
+  onEdit: (sub: Subscription) => void
+  onDelete: (id: string) => void
 }
 
 export default function Dashboard({
@@ -17,6 +21,9 @@ export default function Dashboard({
   onGotoImport,
   onConfirmCandidate,
   onDismissCandidate,
+  onAdd,
+  onEdit,
+  onDelete,
 }: Props) {
   const totals = useMemo(
     () => computeTotals(state.subscriptions, state.settings, undefined, { table: state.fxTable }),
@@ -80,42 +87,11 @@ export default function Dashboard({
         </div>
       </div>
 
-      <div className="grid grid-dash">
+      {findings.length > 0 && (
         <div className="card">
-          <h2 className="section-title">카테고리별 지출</h2>
-          {sortedCategories.length === 0 ? (
-            <p className="chart-empty">표시할 데이터가 없습니다.</p>
-          ) : (
-            sortedCategories.map((c) => (
-              <div className="chart-row" key={c.category}>
-                <span className="chart-row-label" title={CATEGORY_LABEL[c.category]}>
-                  {CATEGORY_LABEL[c.category]}
-                </span>
-                <span className="chart-row-track">
-                  <span
-                    className="chart-row-fill"
-                    style={{ width: `${(c.monthly / maxCategoryMonthly) * 100}%` }}
-                  />
-                </span>
-                <span className="chart-row-value">{formatMoney(c.monthly, base)}</span>
-              </div>
-            ))
-          )}
-        </div>
-
-        <div className="card">
-          <h2 className="section-title">다가오는 결제</h2>
-          <UpcomingTimeline
-            upcoming={totals.upcoming}
-            windowDays={state.settings.upcomingWindowDays}
-            base={base}
-          />
-        </div>
-
-        <div className="card" style={{ gridColumn: '1 / -1' }}>
           <h2 className="section-title">
             점검
-            {findings.length > 0 && <span className="pill" style={{ marginLeft: 8 }}>{findings.length}건</span>}
+            <span className="pill" style={{ marginLeft: 8 }}>{findings.length}건</span>
           </h2>
           <FindingList
             findings={findings}
@@ -123,6 +99,68 @@ export default function Dashboard({
             onConfirmCandidate={onConfirmCandidate}
             onDismissCandidate={onDismissCandidate}
           />
+        </div>
+      )}
+
+      <div className="grid grid-dash">
+        <div className="dash-main">
+          <div className="card">
+            <div className="section-head">
+              <h2 className="section-title" style={{ margin: 0 }}>
+                구독
+                <span className="pill" style={{ marginLeft: 8 }}>{state.subscriptions.length}개</span>
+              </h2>
+              <div className="toolbar" style={{ margin: 0 }}>
+                <button className="btn btn-sm" type="button" onClick={onGotoImport}>
+                  자료 가져오기
+                </button>
+                <button className="btn btn-sm btn-primary" type="button" onClick={onAdd}>
+                  구독 추가
+                </button>
+              </div>
+            </div>
+            <SubscriptionList
+              state={state}
+              onAdd={onAdd}
+              onEdit={onEdit}
+              onDelete={onDelete}
+              onGotoImport={onGotoImport}
+              embedded
+            />
+          </div>
+        </div>
+
+        <div className="dash-side">
+          <div className="card">
+            <h2 className="section-title">다가오는 결제</h2>
+            <UpcomingTimeline
+              upcoming={totals.upcoming}
+              windowDays={state.settings.upcomingWindowDays}
+              base={base}
+            />
+          </div>
+
+          <div className="card">
+            <h2 className="section-title">카테고리별 지출</h2>
+            {sortedCategories.length === 0 ? (
+              <p className="chart-empty">표시할 데이터가 없습니다.</p>
+            ) : (
+              sortedCategories.map((c) => (
+                <div className="chart-row" key={c.category}>
+                  <span className="chart-row-label" title={CATEGORY_LABEL[c.category]}>
+                    {CATEGORY_LABEL[c.category]}
+                  </span>
+                  <span className="chart-row-track">
+                    <span
+                      className="chart-row-fill"
+                      style={{ width: `${(c.monthly / maxCategoryMonthly) * 100}%` }}
+                    />
+                  </span>
+                  <span className="chart-row-value">{formatMoney(c.monthly, base)}</span>
+                </div>
+              ))
+            )}
+          </div>
         </div>
       </div>
     </div>
