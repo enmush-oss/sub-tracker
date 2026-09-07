@@ -1,15 +1,23 @@
 import { useMemo } from 'react'
-import type { AppState, Currency } from '../types'
+import type { AppState, Currency, Subscription } from '../types'
 import { CATEGORY_LABEL } from '../types'
 import { computeTotals, formatMoney, daysUntil } from '../lib/money'
 import { analyze } from '../lib/analyze'
+import FindingList from './FindingList'
 
 interface Props {
   state: AppState
   onGotoImport: () => void
+  onConfirmCandidate: (draft: Omit<Subscription, 'id' | 'createdAt' | 'updatedAt'>, key: string) => void
+  onDismissCandidate: (key: string) => void
 }
 
-export default function Dashboard({ state, onGotoImport }: Props) {
+export default function Dashboard({
+  state,
+  onGotoImport,
+  onConfirmCandidate,
+  onDismissCandidate,
+}: Props) {
   const totals = useMemo(
     () => computeTotals(state.subscriptions, state.settings, undefined, { table: state.fxTable }),
     [state],
@@ -45,9 +53,7 @@ export default function Dashboard({ state, onGotoImport }: Props) {
   }
 
   const maxCategoryMonthly = Math.max(1, ...totals.byCategory.map((c) => c.monthly))
-  const maxMethodMonthly = Math.max(1, ...totals.byPaymentMethod.map((m) => m.monthly))
   const sortedCategories = [...totals.byCategory].sort((a, b) => b.monthly - a.monthly)
-  const sortedMethods = [...totals.byPaymentMethod].sort((a, b) => b.monthly - a.monthly)
 
   return (
     <div>
@@ -70,7 +76,7 @@ export default function Dashboard({ state, onGotoImport }: Props) {
         <div className="kpi-tile">
           <span className="kpi-label">절약 가능액 (월)</span>
           <span className="kpi-value kpi-save">{formatMoney(totalSaving, base)}</span>
-          <span className="kpi-sub">점검 탭에서 확인하기</span>
+          <span className="kpi-sub">아래 점검에서 확인하기</span>
         </div>
       </div>
 
@@ -107,25 +113,16 @@ export default function Dashboard({ state, onGotoImport }: Props) {
         </div>
 
         <div className="card" style={{ gridColumn: '1 / -1' }}>
-          <h2 className="section-title">결제수단별 분해</h2>
-          {sortedMethods.length === 0 ? (
-            <p className="chart-empty">표시할 데이터가 없습니다.</p>
-          ) : (
-            sortedMethods.map((m) => (
-              <div className="chart-row" key={m.method}>
-                <span className="chart-row-label" title={m.method}>
-                  {m.method}
-                </span>
-                <span className="chart-row-track">
-                  <span
-                    className="chart-row-fill"
-                    style={{ width: `${(m.monthly / maxMethodMonthly) * 100}%` }}
-                  />
-                </span>
-                <span className="chart-row-value">{formatMoney(m.monthly, base)}</span>
-              </div>
-            ))
-          )}
+          <h2 className="section-title">
+            점검
+            {findings.length > 0 && <span className="pill" style={{ marginLeft: 8 }}>{findings.length}건</span>}
+          </h2>
+          <FindingList
+            findings={findings}
+            base={base}
+            onConfirmCandidate={onConfirmCandidate}
+            onDismissCandidate={onDismissCandidate}
+          />
         </div>
       </div>
     </div>

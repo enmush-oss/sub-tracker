@@ -1111,3 +1111,40 @@ textarea {
   gap: 8px;
   margin-top: 10px;
 }
+
+/* 자료입력 — 명세서/이메일 고르기 */
+.source-switch {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.source-btn {
+  flex: 1;
+  min-width: 200px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 12px 14px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-subtle);
+  color: inherit;
+  cursor: pointer;
+}
+.source-btn:hover {
+  border-color: var(--accent);
+}
+.source-btn.active {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.source-btn-label {
+  font-weight: 600;
+  font-size: 14px;
+}
+.source-btn-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+}

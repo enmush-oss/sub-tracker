@@ -5,20 +5,19 @@ import { collectRateNeeds, ensureRates } from './lib/fx'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import Dashboard from './components/Dashboard'
 import SubscriptionList from './components/SubscriptionList'
-import ImportWizard from './components/ImportWizard'
-import EmailImport from './components/EmailImport'
-import Findings from './components/Findings'
+import DataImport from './components/DataImport'
 import SettingsPanel from './components/SettingsPanel'
 import SubscriptionForm from './components/SubscriptionForm'
 
-type Tab = 'dashboard' | 'subscriptions' | 'import' | 'email' | 'findings' | 'settings'
+type Tab = 'dashboard' | 'subscriptions' | 'import' | 'settings'
 
+// 탭은 네 개면 충분하다. 명세서와 이메일은 "근거를 어디서 가져올까"라는
+// 같은 질문의 두 답이라 자료입력 안에서 고르게 하고, 점검은 대시보드에 넣었다.
+// 진단만 따로 있는 탭은 사람들이 거기까지 안 간다.
 const TABS: { id: Tab; label: string }[] = [
   { id: 'dashboard', label: '대시보드' },
   { id: 'subscriptions', label: '구독' },
-  { id: 'import', label: '명세서' },
-  { id: 'email', label: '이메일' },
-  { id: 'findings', label: '점검' },
+  { id: 'import', label: '자료입력' },
   { id: 'settings', label: '설정' },
 ]
 
@@ -198,7 +197,12 @@ export default function App() {
       <main className="app-main">
         <ErrorBoundary key={tab} onReset={handleHardReset}>
         {tab === 'dashboard' && (
-          <Dashboard state={state} onGotoImport={() => setTab('import')} />
+          <Dashboard
+            state={state}
+            onGotoImport={() => setTab('import')}
+            onConfirmCandidate={openDraftForm}
+            onDismissCandidate={dismissCandidate}
+          />
         )}
         {tab === 'subscriptions' && (
           <SubscriptionList
@@ -210,17 +214,7 @@ export default function App() {
           />
         )}
         {tab === 'import' && (
-          <ImportWizard state={state} updateState={updateState} onRegister={openDraftForm} />
-        )}
-        {tab === 'email' && (
-          <EmailImport state={state} updateState={updateState} onRegister={openDraftForm} />
-        )}
-        {tab === 'findings' && (
-          <Findings
-            state={state}
-            onConfirmCandidate={openDraftForm}
-            onDismissCandidate={dismissCandidate}
-          />
+          <DataImport state={state} updateState={updateState} onRegister={openDraftForm} />
         )}
         {tab === 'settings' && <SettingsPanel state={state} updateState={updateState} />}
         </ErrorBoundary>

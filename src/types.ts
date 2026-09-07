@@ -258,7 +258,6 @@ export interface Totals {
   activeCount: number
   byCategory: { category: Category; monthly: number; count: number }[]
   byCurrency: { currency: Currency; monthly: number; count: number }[]
-  byPaymentMethod: { method: string; monthly: number; count: number }[]
   /** 앞으로 upcomingWindowDays 안에 빠져나갈 결제 */
   upcoming: { sub: Subscription; date: string; amountBase: number }[]
 }

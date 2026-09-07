@@ -230,7 +230,6 @@ export function computeTotals(
   let monthly = 0
   const byCategoryMap = new Map<string, { monthly: number; count: number }>()
   const byCurrencyMap = new Map<string, { monthly: number; count: number }>()
-  const byPaymentMethodMap = new Map<string, { monthly: number; count: number }>()
 
   for (const sub of counted) {
     const m = monthlyBase(sub, settings, fx)
@@ -245,12 +244,6 @@ export function computeTotals(
     cur.monthly += m
     cur.count += 1
     byCurrencyMap.set(sub.currency, cur)
-
-    const method = sub.paymentMethod ?? '미지정'
-    const pm = byPaymentMethodMap.get(method) ?? { monthly: 0, count: 0 }
-    pm.monthly += m
-    pm.count += 1
-    byPaymentMethodMap.set(method, pm)
   }
 
   const upcoming = counted
@@ -276,11 +269,6 @@ export function computeTotals(
     })),
     byCurrency: Array.from(byCurrencyMap.entries()).map(([currency, v]) => ({
       currency: currency as Currency,
-      monthly: v.monthly,
-      count: v.count,
-    })),
-    byPaymentMethod: Array.from(byPaymentMethodMap.entries()).map(([method, v]) => ({
-      method,
       monthly: v.monthly,
       count: v.count,
     })),
