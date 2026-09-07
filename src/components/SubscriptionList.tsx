@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
 import type { AppState, Category, Subscription, SubStatus } from '../types'
 import { BILLING_CHANNEL_LABEL, CATEGORY_LABEL, STATUS_LABEL } from '../types'
-import { formatMoney, monthlyBase, daysUntil } from '../lib/money'
+import { cycleText, formatMoney, monthlyBase, daysUntil } from '../lib/money'
 
 type SortKey = 'amount' | 'nextBillingDate' | 'name'
 
@@ -44,6 +44,14 @@ export default function SubscriptionList({
     })
     return list
   }, [state, search, categoryFilter, statusFilter, sortKey])
+
+  const base = state.settings.baseCurrency
+  const fx = { table: state.fxTable }
+  // 막대 길이의 기준. 가장 비싼 구독이 100%다.
+  const maxMonthly = Math.max(
+    1,
+    ...state.subscriptions.map((s) => monthlyBase(s, state.settings, fx)),
+  )
 
   if (state.subscriptions.length === 0) {
     return (
@@ -122,37 +130,56 @@ export default function SubscriptionList({
       {filtered.length === 0 ? (
         <p className="chart-empty">조건에 맞는 구독이 없습니다.</p>
       ) : (
-        <div className="sub-grid">
+        <div className="sub-list">
           {filtered.map((s) => {
             const d = daysUntil(s.nextBillingDate)
+            const monthly = monthlyBase(s, state.settings, { table: state.fxTable })
             return (
-              <div className="sub-card" key={s.id}>
-                <div className="sub-card-head">
-                  <div>
-                    <div className="sub-card-service">{s.service}</div>
-                    {s.plan && <div className="sub-card-plan">{s.plan}</div>}
+              <div className="sub-row" key={s.id}>
+                <div className="sub-row-main">
+                  <div className="sub-row-name">
+                    <span className="sub-row-service">{s.service}</span>
+                    {s.plan && <span className="sub-row-plan">{s.plan}</span>}
+                    <span className="pill">{CATEGORY_LABEL[s.category]}</span>
+                    {(s.extraCategories ?? []).map((c) => (
+                      <span className="pill" key={c}>
+                        +{CATEGORY_LABEL[c]}
+                      </span>
+                    ))}
+                    {s.status !== 'active' && <span className="pill">{STATUS_LABEL[s.status]}</span>}
+                    {s.billingChannel && s.billingChannel !== 'card' && (
+                      <span className="pill">{BILLING_CHANNEL_LABEL[s.billingChannel]}</span>
+                    )}
                   </div>
-                  <div className="sub-card-amount">{formatMoney(s.amount, s.currency)}</div>
+
+                  {/* 막대는 월 환산 기준이다. 연간 결제를 원금 그대로 그리면
+                      2년 약정 하나가 화면을 다 차지해 나머지가 안 보인다. */}
+                  <div className="sub-row-bar">
+                    <span
+                      className="sub-row-fill"
+                      style={{ width: `${Math.max(2, (monthly / maxMonthly) * 100)}%` }}
+                    />
+                  </div>
                 </div>
-                <div className="sub-card-meta">
-                  <span className="pill">{CATEGORY_LABEL[s.category]}</span>
-                  {(s.extraCategories ?? []).map((c) => (
-                    <span className="pill" key={c}>
-                      +{CATEGORY_LABEL[c]}
-                    </span>
-                  ))}
-                  <span className="pill">{STATUS_LABEL[s.status]}</span>
-                  <span className="pill">다음 결제 {s.nextBillingDate} ({d <= 0 ? '오늘' : `D-${d}`})</span>
-                  {s.billingChannel && s.billingChannel !== 'card' && (
-                    <span className="pill">{BILLING_CHANNEL_LABEL[s.billingChannel]}</span>
-                  )}
-                  {s.paymentMethod && <span className="pill">{s.paymentMethod}</span>}
-                  {s.seats && s.seats > 1 && <span className="pill">{s.seats}인 가족요금제</span>}
+
+                <div className="sub-row-figures">
+                  <span className="sub-row-monthly">{formatMoney(monthly, base)}</span>
+                  <span className="sub-row-raw">
+                    {s.currency !== base || s.cycle !== 'monthly'
+                      ? `${formatMoney(s.amount, s.currency)} · ${cycleText(s.cycle, s.cycleDays)}`
+                      : '월'}
+                  </span>
                 </div>
+
+                <div className="sub-row-next">
+                  <span className={`pill${d >= 0 && d <= 7 ? ' pill-warn' : ''}`}>
+                    {d < 0 ? '지남' : d === 0 ? '오늘' : `D-${d}`}
+                  </span>
+                  <span className="sub-row-date">{s.nextBillingDate}</span>
+                </div>
+
                 {confirmDeleteId === s.id ? (
-                  <div className="confirm-inline">
-                    <span>정말 삭제할까요?</span>
-                    <span className="spacer" />
+                  <div className="sub-row-actions">
                     <button className="btn btn-sm" type="button" onClick={() => setConfirmDeleteId(null)}>
                       취소
                     </button>
@@ -168,7 +195,7 @@ export default function SubscriptionList({
                     </button>
                   </div>
                 ) : (
-                  <div className="sub-card-actions">
+                  <div className="sub-row-actions">
                     <button className="btn btn-sm" type="button" onClick={() => onEdit(s)}>
                       수정
                     </button>
@@ -179,11 +206,6 @@ export default function SubscriptionList({
                     >
                       삭제
                     </button>
-                    {s.cancelUrl && (
-                      <a className="btn btn-sm btn-ghost" href={s.cancelUrl} target="_blank" rel="noreferrer">
-                        해지 페이지
-                      </a>
-                    )}
                   </div>
                 )}
               </div>

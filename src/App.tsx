@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 import type { AppState, Subscription } from './types'
 import { emptyState, loadState, saveState, uid } from './lib/store'
 import { collectRateNeeds, ensureRates } from './lib/fx'
+import { computeTotals, formatMoney } from './lib/money'
+import { analyze } from './lib/analyze'
 import { ErrorBoundary } from './components/ErrorBoundary'
 import Dashboard from './components/Dashboard'
 import DataImport from './components/DataImport'
@@ -168,6 +170,16 @@ export default function App() {
     return formModal.draft
   }, [formModal])
 
+  const base = state.settings.baseCurrency
+  const totals = useMemo(
+    () => computeTotals(state.subscriptions, state.settings, undefined, { table: state.fxTable }),
+    [state],
+  )
+  const totalSaving = useMemo(
+    () => analyze(state).reduce((sum, f) => sum + Math.max(0, f.monthlySaving), 0),
+    [state],
+  )
+
   return (
     <div className="app">
       <header className="app-header">
@@ -184,6 +196,27 @@ export default function App() {
             </button>
           ))}
         </nav>
+        {/* 구독료는 어느 화면에 있든 늘 보여야 하는 숫자다. 헤더에 둔다. */}
+        <div className="header-stats">
+          <div className="header-stat">
+            <span className="header-stat-label">이번 달</span>
+            <span className="header-stat-value kpi-accent">{formatMoney(totals.monthly, base)}</span>
+          </div>
+          <div className="header-stat">
+            <span className="header-stat-label">연 환산</span>
+            <span className="header-stat-value">{formatMoney(totals.yearly, base)}</span>
+          </div>
+          <div className="header-stat">
+            <span className="header-stat-label">구독</span>
+            <span className="header-stat-value">{totals.activeCount}개</span>
+          </div>
+          {totalSaving > 0 && (
+            <div className="header-stat">
+              <span className="header-stat-label">절약 가능</span>
+              <span className="header-stat-value kpi-save">{formatMoney(totalSaving, base)}</span>
+            </div>
+          )}
+        </div>
         <button
           className="icon-btn"
           type="button"

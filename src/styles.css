@@ -326,8 +326,8 @@ textarea {
 }
 
 .grid-dash {
-  /* 구독 목록이 주(主), 다가오는 결제·카테고리가 보조. 시선이 왼쪽에서 시작한다. */
-  grid-template-columns: minmax(0, 1.7fr) minmax(260px, 1fr);
+  /* 왼쪽은 "뭘 구독 중인가", 오른쪽은 "손대야 할 것". */
+  grid-template-columns: minmax(0, 1.9fr) minmax(300px, 1fr);
   align-items: start;
 }
 
@@ -1169,4 +1169,118 @@ textarea {
 .source-btn-hint {
   font-size: 12px;
   color: var(--text-dim);
+}
+
+/* ─── 헤더 구독료 ────────────────────────────────────────── */
+.header-stats {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+  margin-left: auto;
+  padding-right: 4px;
+}
+.header-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1.25;
+}
+.header-stat-label {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.header-stat-value {
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── 구독 리스트차트 ────────────────────────────────────── */
+.sub-list {
+  display: flex;
+  flex-direction: column;
+}
+.sub-row {
+  display: grid;
+  /* 이름+막대 | 금액 | 다음 결제 | 버튼 */
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  align-items: center;
+  gap: 14px;
+  padding: 11px 4px;
+  border-bottom: 1px solid var(--border);
+}
+.sub-row:last-child {
+  border-bottom: none;
+}
+.sub-row:hover {
+  background: var(--bg-subtle);
+}
+.sub-row-main {
+  min-width: 0;
+}
+.sub-row-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.sub-row-service {
+  font-weight: 600;
+  font-size: 14px;
+}
+.sub-row-plan {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+/* 막대는 월 환산 기준이라 서로 길이를 비교할 수 있다 */
+.sub-row-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+.sub-row-fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--series-1);
+}
+.sub-row-figures {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  min-width: 110px;
+}
+.sub-row-monthly {
+  font-weight: 700;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+/* 원 통화·주기. 월 KRW 구독이면 "월" 한 글자만 나온다 */
+.sub-row-raw {
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+.sub-row-next {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
+  min-width: 84px;
+}
+.sub-row-date {
+  font-size: 11px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+.pill-warn {
+  background: var(--status-serious);
+  color: #fff;
+}
+.sub-row-actions {
+  display: flex;
+  gap: 6px;
 }
